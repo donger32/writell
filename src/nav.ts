@@ -37,6 +37,8 @@ export interface NavState {
   newProject: boolean;
   tracking: boolean; // track changes on
   exportFor: string | null; // project id when the export dialog is open
+  shareFor: string | null;  // project id when the share dialog is open
+  joinLink: string | null;  // invite link being joined ('' = paste one)
 }
 
 const KEY = 'inkwell.nav.v1';
@@ -50,7 +52,7 @@ function loadTabs(): string[] {
   try { return JSON.parse(localStorage.getItem(TKEY) || '[]'); } catch { return []; }
 }
 
-let state: NavState = { route: loadRoute(), settingsOpen: false, settingsTab: 'appearance', paletteOpen: false, helpOpen: false, fullscreen: false, reading: false, tabs: loadTabs(), quickNote: false, editing: getSettings().startMode === 'editing', newProject: false, exportFor: null, tracking: false };
+let state: NavState = { route: loadRoute(), settingsOpen: false, settingsTab: 'appearance', paletteOpen: false, helpOpen: false, fullscreen: false, reading: false, tabs: loadTabs(), quickNote: false, editing: getSettings().startMode === 'editing', newProject: false, exportFor: null, shareFor: null, joinLink: null, tracking: false };
 const ls = new Set<() => void>();
 
 export function setNav(p: Partial<NavState>) {

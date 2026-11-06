@@ -12,6 +12,7 @@ import { matches } from '../shortcuts';
 import { confirmDialog } from './ui';
 import { AiPanel } from './AiPanel';
 import { TimelineBox } from './visual/TimelineBox';
+import { useSharedRoles } from '../sync/engine';
 import { db, saveSceneContent, takeSnapshot, type Scene, type Status } from '../db';
 import { editorExtensions, jsonToMarkdown, markdownToJson } from '../editor/extensions';
 import { getSettings, setSettings, useSettings } from '../settings';
@@ -114,6 +115,10 @@ function PaneInner({ scene, secondary, onClose }: { scene: Scene; secondary?: bo
   const columnRef = useRef<HTMLDivElement>(null);
   const hover = useMentionHover(columnRef, s.charCards && raw === null);
   useEffect(() => { editor?.view.dom.setAttribute('spellcheck', String(s.spellcheck)); }, [editor, s.spellcheck]);
+  // viewers and commenters of a shared project read only
+  const sharedRoles = useSharedRoles();
+  const readOnly = sharedRoles[scene.projectId] === 'viewer' || sharedRoles[scene.projectId] === 'commenter';
+  useEffect(() => { if (editor && !editor.isDestroyed) editor.setEditable(!readOnly); }, [editor, readOnly]);
   // another device changed this scene (account sync): show its text if nothing is waiting to be saved here
   useEffect(() => {
     if (!editor) return;

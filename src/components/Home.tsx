@@ -1,5 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, Star, MoreHorizontal, Upload, FileUp, Pencil, Copy, Archive, Trash2, ArchiveRestore } from 'lucide-react';
+import { Plus, Star, MoreHorizontal, Upload, FileUp, Pencil, Copy, Archive, Trash2, ArchiveRestore, Share2, Users, LogOut, Link2 } from 'lucide-react';
+import { sharedRole, useSharedRoles } from '../sync/engine';
+import { leaveProject, stopSharing, ROLE_LABEL } from '../social/share';
 import { db, duplicateProject, type Project } from '../db';
 import { deleteProject } from '../trash';
 import { toastTrashed } from './TrashView';
@@ -31,14 +33,22 @@ async function runImport(kind: 'backup' | 'manuscript' | 'docx') {
 export function projectMenu(e: React.MouseEvent, p: Project) {
   openMenu(e, [
     { label: 'Rename', icon: <Pencil size={14} />, onClick: async () => { const t = await promptDialog('Rename project', p.title); if (t) db.projects.update(p.id, { title: t }); } },
+    { label: sharedRole(p.id) ? 'Sharing…' : 'Share…', icon: <Share2 size={14} />, onClick: () => setNav({ shareFor: p.id }) },
     { label: p.favorite ? 'Remove from favorites' : 'Add to favorites', icon: <Star size={14} />, onClick: () => db.projects.update(p.id, { favorite: !p.favorite }) },
     { label: 'Duplicate', icon: <Copy size={14} />, onClick: async () => { await duplicateProject(p.id); toast('Project duplicated'); } },
     { label: p.archived ? 'Unarchive' : 'Archive', icon: p.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />, onClick: () => db.projects.update(p.id, { archived: !p.archived }) },
     { divider: true, label: '', onClick: () => {} },
-    { label: 'Delete project…', danger: true, icon: <Trash2 size={14} />, onClick: async () => {
+    ...(sharedRole(p.id) && sharedRole(p.id) !== 'owner' ? [{ label: 'Leave project…', danger: true, icon: <LogOut size={14} />, onClick: async () => {
+      if (await confirmDialog(`Leave “${p.title}”?`, 'It disappears from your devices. The owner can add you again.', { danger: true, ok: 'Leave project' })) { go({ view: 'home' }); try { await leaveProject(p.id); toast('You left the project'); } catch (e) { toast((e as Error).message); } }
+    } }] : [{ label: 'Delete project…', danger: true, icon: <Trash2 size={14} />, onClick: async () => {
+      if (sharedRole(p.id) === 'owner') {
+        if (!(await confirmDialog(`Delete “${p.title}” for everyone?`, 'It’s shared: everyone loses access, then it goes to your Trash.', { danger: true, ok: 'Delete for everyone' }))) return;
+        try { await stopSharing(p.id); } catch (e) { toast((e as Error).message); return; }
+        go({ view: 'home' }); toastTrashed(p.title, await deleteProject(p.id)); return;
+      }
       const ok = await confirmDialog(`Delete “${p.title}”?`, 'The whole project goes to the Trash. You can restore it from there until you empty the trash.', { danger: true, ok: 'Move to Trash' });
       if (ok) { go({ view: 'home' }); toastTrashed(p.title, await deleteProject(p.id)); }
-    } },
+    } }]),
   ]);
 }
 
@@ -52,6 +62,7 @@ function ProjectCard({ p, words }: { p: Project; words: number }) {
       <div className="card-body">
         <div className="row">
           <strong className="grow ellipsis">{p.title}</strong>
+          {sharedRole(p.id) && <span className="shared-badge" title={sharedRole(p.id) === 'owner' ? 'You share this project' : `Shared with you · ${ROLE_LABEL[sharedRole(p.id)!]}`}><Users size={12} />{sharedRole(p.id) !== 'owner' ? ` ${ROLE_LABEL[sharedRole(p.id)!]}` : ''}</span>}
           <button className={'icon-btn sm fav-btn' + (p.favorite ? ' on' : '')} title={p.favorite ? 'Remove from favorites' : 'Add to favorites'} aria-label={p.favorite ? 'Remove from favorites' : 'Add to favorites'} aria-pressed={!!p.favorite} onClick={(e) => { e.stopPropagation(); db.projects.update(p.id, { favorite: !p.favorite }); }}>
             <Star size={14} fill={p.favorite ? 'currentColor' : 'none'} />
           </button>
@@ -65,6 +76,7 @@ function ProjectCard({ p, words }: { p: Project; words: number }) {
 }
 
 export function HomeView() {
+  const roles = useSharedRoles();
   const projects = useLiveQuery(() => db.projects.orderBy('openedAt').reverse().filter((p) => !p.archived).toArray(), []);
   const words = useProjectWords();
   const recent = useLiveQuery(async () => {
@@ -95,6 +107,7 @@ export function HomeView() {
             { label: 'Markdown or text (.md, .txt)', onClick: () => runImport('manuscript') },
           ])}><FileUp size={15} /> Import manuscript</button>
           <button className="btn" onClick={() => runImport('backup')}><Upload size={15} /> Restore backup</button>
+          <button className="btn" onClick={() => setNav({ joinLink: '' })} title="Join a project a friend shared with you"><Link2 size={15} /> Join with a link</button>
           <button className="btn primary" onClick={newProjectFlow}><Plus size={15} /> New project</button>
         </div>
       </header>
@@ -121,6 +134,13 @@ export function HomeView() {
         </section>
       )}
 
+      {projects.some((p) => roles[p.id] && roles[p.id] !== 'owner') && (
+        <section>
+          <h2 className="section-title">Shared with me</h2>
+          <div className="grid">{projects.filter((p) => roles[p.id] && roles[p.id] !== 'owner').map((p) => <ProjectCard key={p.id} p={p} words={words?.get(p.id) ?? 0} />)}</div>
+        </section>
+      )}
+
       <section>
         <h2 className="section-title">{projects.some((p) => p.favorite) ? 'All projects' : 'Projects'}</h2>
         {projects.length === 0 ? (
@@ -130,7 +150,7 @@ export function HomeView() {
             <button className="btn primary" onClick={newProjectFlow}><Plus size={15} /> New project</button>
           </div>
         ) : (
-          <div className="grid">{projects.map((p) => <ProjectCard key={p.id} p={p} words={words?.get(p.id) ?? 0} />)}</div>
+          <div className="grid">{projects.filter((p) => !roles[p.id] || roles[p.id] === 'owner').map((p) => <ProjectCard key={p.id} p={p} words={words?.get(p.id) ?? 0} />)}</div>
         )}
       </section>
     </div>

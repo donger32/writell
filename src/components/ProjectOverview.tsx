@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
-import { Plus, Download, FileText, Star, MoreHorizontal, History, Settings2, PenLine, ChevronRight, Pencil, GanttChart } from 'lucide-react';
+import { Plus, Download, FileText, Star, MoreHorizontal, History, Settings2, PenLine, ChevronRight, Pencil, GanttChart, Share2 } from 'lucide-react';
+import { sharedRole, useSharedRoles } from '../sync/engine';
 import { TimelineBox } from './visual/TimelineBox';
 import { db, createChapter, autoBackup, importProject, type Status } from '../db';
 import { go, setNav, getRecentScenes } from '../nav';
@@ -14,6 +15,7 @@ const COLORS = ['#8b7cf6', '#5fa8f5', '#5fbf8f', '#e8925a', '#e06c75', '#d17ad8'
 
 /** A calm summary of the project: what it is, how far along, and the chapters. Everything else is in Project settings. */
 export function ProjectOverview({ projectId }: { projectId: string }) {
+  useSharedRoles(); // re-render when sharing changes
   const p = useLiveQuery(() => db.projects.get(projectId), [projectId]);
   const chapters = useLiveQuery(() => db.chapters.where('projectId').equals(projectId).sortBy('order'), [projectId]);
   const scenes = useLiveQuery(() => db.scenes.where('projectId').equals(projectId).toArray(), [projectId]);
@@ -60,6 +62,7 @@ export function ProjectOverview({ projectId }: { projectId: string }) {
       <div className="row gap-s wrap ov-actions">
         {lastScene && <button className="btn primary" onClick={() => go({ view: 'write', projectId, sceneId: lastScene.id })}><PenLine size={14} /> Continue writing</button>}
         <button className="btn" onClick={() => setNav({ exportFor: projectId })}><FileText size={14} /> Export</button>
+        <button className="btn" onClick={() => setNav({ shareFor: projectId })}><Share2 size={14} /> {sharedRole(projectId) ? 'Shared' : 'Share'}</button>
         <button className="btn" onClick={() => setSettingsOpen(true)}><Settings2 size={14} /> Project settings</button>
       </div>
 

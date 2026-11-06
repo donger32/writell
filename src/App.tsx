@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import { Menu, Search } from 'lucide-react';
 import { UpdateBanner } from './components/UpdateBanner';
 import { FriendsView } from './components/FriendsView';
+import { JoinDialog, ShareDialog, takeInviteFromAddress } from './components/ShareDialog';
+import { useSharedRoles, useSyncStatus } from './sync/engine';
+import { Eye } from 'lucide-react';
+import { toast } from './components/ui';
 import { Sidebar } from './components/Sidebar';
 import { HomeView, ProjectsView } from './components/Home';
 import { ProjectOverview } from './components/ProjectOverview';
@@ -42,6 +46,23 @@ export default function App() {
   const { route } = nav;
 
   useEffect(() => applySettingsToDOM(s), [s]);
+  // shared projects: invite links, view-only banner, arrivals/removals
+  const sync = useSyncStatus();
+  const roles = useSharedRoles();
+  useEffect(() => {
+    const check = () => { const link = takeInviteFromAddress(); if (link && getNav().joinLink === null) setNav({ joinLink: link }); };
+    check(); window.addEventListener('hashchange', check);
+    return () => window.removeEventListener('hashchange', check);
+  }, [sync.phase]);
+  useEffect(() => {
+    const added = async (e: Event) => { const p = await db.projects.get((e as CustomEvent).detail as string); toast(`“${p?.title ?? 'A project'}” was shared with you`); };
+    const removed = (e: Event) => toast(`You no longer have access to “${((e as CustomEvent).detail as { title: string }).title}”`);
+    window.addEventListener('writell:shared-added', added); window.addEventListener('writell:shared-removed', removed);
+    return () => { window.removeEventListener('writell:shared-added', added); window.removeEventListener('writell:shared-removed', removed); };
+  }, []);
+  const viewRole = 'projectId' in route ? roles[route.projectId] : undefined;
+  const readOnly = viewRole === 'viewer' || viewRole === 'commenter';
+
   // phones: the sidebar slides in over the page and closes when you pick something
   const [sbOpen, setSbOpen] = useState(false);
   const routeKey = JSON.stringify(route);
@@ -140,6 +161,7 @@ export default function App() {
       <a href="#main-content" className="skip-link" onClick={(e) => { e.preventDefault(); (document.querySelector('.prose, #main-content') as HTMLElement | null)?.focus(); }}>Skip to content</a>
       <main className="main" id="main-content" tabIndex={-1}>
         <UpdateBanner />
+        {readOnly && <div className="readonly-bar"><Eye size={14} /> You're a <strong>{viewRole === 'viewer' ? 'Viewer' : 'Commenter'}</strong> in this shared project: you can read everything, but changes you make won't be saved.</div>}
         {!hideChrome && (
           <div className="phone-bar">
             <button className="icon-btn" aria-label="Menu" aria-expanded={sbOpen} onClick={() => setSbOpen(true)}><Menu size={20} /></button>
@@ -182,6 +204,8 @@ export default function App() {
       {nav.helpOpen && <Help />}
       {nav.newProject && <NewProjectDialog />}
       {nav.exportFor && <ExportDialog projectId={nav.exportFor} onClose={() => setNav({ exportFor: null })} />}
+      {nav.shareFor && <ShareDialog projectId={nav.shareFor} onClose={() => setNav({ shareFor: null })} />}
+      {nav.joinLink !== null && <JoinDialog initial={nav.joinLink} onClose={() => setNav({ joinLink: null })} />}
       {nav.quickNote && <QuickNote projectId={'projectId' in route ? route.projectId : null} onClose={() => setNav({ quickNote: false })} />}
       <DialogHost />
       <MenuHost />

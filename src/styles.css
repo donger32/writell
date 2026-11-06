@@ -974,3 +974,17 @@ textarea.reltext-body { resize: none; border: 0; outline: none; background: tran
 @media (max-width: 700px) { .person { flex-wrap: wrap; } .person-actions { padding: 0 8px 8px 58px; } }
 .friends-page .people, .friends-page .person, .friends-page .find-box { width: 100%; box-sizing: border-box; }
 .friends-page .col.gap-s { align-items: stretch; }
+
+/* sharing */
+.shared-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 999px; padding: 2px 7px; flex: none; }
+.role-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+.role-pill.owner { color: #e8b14a; border-color: color-mix(in srgb, #e8b14a 45%, var(--border)); }
+.share-dialog { min-width: min(520px, 90vw); }
+.share-h { font-size: 11.5px; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); margin: 8px 0 0; }
+.share-people .person { padding-right: 4px; }
+.invite-link { display: flex; gap: 6px; align-items: center; }
+.invite-link input { flex: 1; min-width: 0; font-size: 12px; }
+.invite-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.share-foot { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 4px; }
+.readonly-bar { position: absolute; z-index: 25; left: 50%; bottom: 40px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); display: flex; align-items: center; gap: 8px; padding: 7px 14px; font-size: 12.5px; background: color-mix(in srgb, #e8b14a 16%, var(--panel)); border: 1px solid color-mix(in srgb, #e8b14a 45%, var(--border)); border-radius: 10px; box-shadow: var(--shadow); pointer-events: none; }
+.readonly-bar > svg { color: #e8b14a; flex: none; }
