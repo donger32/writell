@@ -21,7 +21,7 @@ import { createClient, type SupabaseClient, type Session } from '@supabase/supab
 import { useSyncExternalStore } from 'react';
 import { db, uid, now } from '../db';
 import { SUPABASE_KEY, SUPABASE_URL, WEB_APP_URL } from './config';
-import { createKeys, decryptJSON, encryptJSON, unlockWithPassword, unlockWithRecovery, rewrapWithPassword, b64, unb64, type KeyRow } from './crypto';
+import { createKeys, decryptJSON, encryptJSON, unlockWithPassword, unlockWithRecovery, rewrapWithPassword, b64, unb64, importPrivateJwk, importProjectKey, openSealed, type KeyRow } from './crypto';
 
 export const SYNCED = ['projects', 'chapters', 'scenes', 'activity', 'entities', 'links', 'files'] as const;
 type Tbl = typeof SYNCED[number];
@@ -32,7 +32,7 @@ type Row = { id: string; updatedAt?: number; [k: string]: unknown };
 /* ------------------------------------------------------------------ */
 class SyncDB extends Dexie {
   meta!: Table<{ key: string; value: unknown }, string>;
-  state!: Table<{ k: string; hash: string }, string>;
+  state!: Table<{ k: string; hash: string; pid?: string; dest?: string }, string>;
   constructor() { super('writell-sync'); this.version(1).stores({ meta: 'key', state: 'k' }); }
 }
 const sdb = new SyncDB();
@@ -123,88 +123,174 @@ function installHooks() {
 /* ------------------------------------------------------------------ */
 const running = () => !!(dek && userId && status.phase !== 'paused' && status.phase !== 'signed-out' && status.phase !== 'needs-recovery');
 
+/* ------------------------------------------------------------------ */
+/* shared projects                                                     */
+/* ------------------------------------------------------------------ */
+export type Role = 'owner' | 'editor' | 'commenter' | 'viewer';
+interface SharedInfo { role: Role; key: CryptoKey }
+/** projects shared with / by you: id → your role and the project's key */
+const shared = new Map<string, SharedInfo>();
+const sharedListeners = new Set<() => void>();
+let sharedSnapshot: Record<string, Role> = {};
+const emitShared = () => { sharedSnapshot = Object.fromEntries([...shared].map(([k, v]) => [k, v.role])); sharedListeners.forEach((l) => l()); };
+/** { projectId: your role } for every shared project, re-rendering on change */
+export const useSharedRoles = () => useSyncExternalStore((l) => { sharedListeners.add(l); return () => sharedListeners.delete(l); }, () => sharedSnapshot, () => sharedSnapshot);
+export const sharedRole = (projectId: string): Role | undefined => shared.get(projectId)?.role;
+export const sharedKey = (projectId: string) => shared.get(projectId)?.key;
+export const canEdit = (projectId: string) => { const r = shared.get(projectId)?.role; return !r || r === 'owner' || r === 'editor'; };
+async function saveShared() {
+  await setMeta('shared', [...shared].map(([pid, v]) => ({ pid, role: v.role, key: v.key })));
+  emitShared();
+}
+const pidOf = (t: Tbl, row: Row) => (t === 'projects' ? row.id : String(row.projectId ?? ''));
+/** where a row is stored: '' = your private space, otherwise the shared project's id */
+const destOf = (t: Tbl, pid: string) => (t !== 'activity' && pid && shared.has(pid) ? pid : '');
+type StateRow = { k: string; hash: string; pid?: string; dest?: string };
+
 /** Compare everything with what was last synced (start-up / sign-in) */
-async function scanAll() {
-  const known = new Map((await sdb.state.toArray()).map((s) => [s.k, s.hash]));
+async function scanAll(onlyProject?: string) {
+  const known = new Map((await sdb.state.toArray()).map((s) => [s.k, s as StateRow]));
   for (const t of SYNCED) {
     const rows = await table(t).toArray();
     for (const r of rows) {
       const k = K(t, r.id);
-      if (known.get(k) !== fingerprint(t, r)) dirty.add(k);
+      const st = known.get(k);
+      const pid = pidOf(t, r);
+      if (onlyProject && pid !== onlyProject) { known.delete(k); continue; }
+      if (st?.hash !== fingerprint(t, r) || (st?.dest ?? '') !== destOf(t, pid)) dirty.add(k);
       known.delete(k);
     }
   }
-  for (const k of known.keys()) dirty.add(k); // synced before, gone now = deleted here
+  if (!onlyProject) for (const k of known.keys()) dirty.add(k); // synced before, gone now = deleted here
   setStatus({ pending: dirty.size });
 }
 
+type ItemRow = { tbl: string; id: string; deleted: boolean; data: string | null };
 const MAX_BATCH_BYTES = 900_000;
+const readOnlyEdits = new Set<string>();
 async function push() {
   if (!dirty.size) return;
   const keys = [...dirty];
-  let batch: { user_id: string; tbl: string; id: string; deleted: boolean; data: string | null }[] = [];
-  let bytes = 0;
-  const done: { k: string; hash: string | null }[] = [];
-  const flush = async () => {
-    if (!batch.length) return;
-    const { error } = await sb().from('writell_items').upsert(batch, { onConflict: 'user_id,tbl,id' });
+  // one batch per destination (your private space, or a shared project)
+  const batches = new Map<string, { rows: ItemRow[]; done: { k: string; st: StateRow | null }[]; bytes: number }>();
+  const pinged = new Set<string>();
+  const flush = async (dest: string) => {
+    const b = batches.get(dest); if (!b || !b.rows.length) return;
+    const { error } = dest
+      ? await sb().from('writell_shared_items').upsert(b.rows.map((r) => ({ ...r, project_id: dest, updated_by: userId })), { onConflict: 'project_id,tbl,id' })
+      : await sb().from('writell_items').upsert(b.rows.map((r) => ({ ...r, user_id: userId })), { onConflict: 'user_id,tbl,id' });
     if (error) throw error;
     await sdb.transaction('rw', sdb.state, async () => {
-      for (const d of done) { if (d.hash === null) await sdb.state.delete(d.k); else await sdb.state.put({ k: d.k, hash: d.hash }); }
+      for (const d of b.done) { if (d.st === null) await sdb.state.delete(d.k); else await sdb.state.put(d.st); }
     });
-    for (const d of done) dirty.delete(d.k);
+    for (const d of b.done) if (!b.done.some((x) => x.k === d.k && x !== d && x.st !== null && d.st === null)) dirty.delete(d.k);
+    if (dest) pinged.add(dest);
+    batches.delete(dest);
     setStatus({ pending: dirty.size });
-    batch = []; bytes = 0; done.length = 0;
+  };
+  const add = async (dest: string, row: ItemRow, st: StateRow | null, k: string) => {
+    const b = batches.get(dest) ?? { rows: [], done: [], bytes: 0 };
+    batches.set(dest, b);
+    b.rows.push(row); b.done.push({ k, st }); b.bytes += row.data?.length ?? 0;
+    if (b.bytes > MAX_BATCH_BYTES || b.rows.length >= 200) await flush(dest);
   };
   for (const k of keys) {
     const [t, id] = k.split('\u0000') as [Tbl, string];
     const row = await table(t).get(id);
-    const prev = (await sdb.state.get(k))?.hash;
+    const prev = (await sdb.state.get(k)) as StateRow | undefined;
+    const pid = row ? pidOf(t, row) : prev?.pid ?? '';
+    const dest = row ? destOf(t, pid) : prev?.dest ?? '';
+    if (dest && !canEdit(dest)) { readOnlyEdits.add(k); dirty.delete(k); continue; } // viewers can't change shared projects
     if (!row) {
       if (prev === undefined) { dirty.delete(k); continue; } // never synced: nothing to remove
-      batch.push({ user_id: userId!, tbl: t, id, deleted: true, data: null });
-      done.push({ k, hash: null });
-    } else {
-      const hash = fingerprint(t, row);
-      if (hash === prev) { dirty.delete(k); continue; }
-      const data = await encryptJSON(dek!, await toPlain(t, row));
-      batch.push({ user_id: userId!, tbl: t, id, deleted: false, data });
-      done.push({ k, hash });
-      bytes += data.length;
+      if (dest && !shared.has(dest)) { await sdb.state.delete(k); dirty.delete(k); continue; } // project no longer shared with you
+      await add(dest, { tbl: t, id, deleted: true, data: null }, null, k);
+      continue;
     }
-    if (bytes > MAX_BATCH_BYTES || batch.length >= 200) await flush();
+    const hash = fingerprint(t, row);
+    if (hash === prev?.hash && (prev?.dest ?? '') === dest) { dirty.delete(k); continue; }
+    if (prev && (prev.dest ?? '') !== dest && !(prev.dest && !shared.has(prev.dest))) {
+      // moved (e.g. a project you just shared): remove the old copy where it was
+      await add(prev.dest ?? '', { tbl: t, id, deleted: true, data: null }, { k, hash: '', pid, dest }, k);
+    }
+    const key = dest ? shared.get(dest)!.key : dek!;
+    const data = await encryptJSON(key, await toPlain(t, row));
+    await add(dest, { tbl: t, id, deleted: false, data }, { k, hash, pid, dest }, k);
   }
-  await flush();
+  for (const dest of [...batches.keys()]) await flush(dest);
+  for (const p of pinged) ping(p);
   setStatus({ pending: dirty.size });
+  if (readOnlyEdits.size) await revertReadOnly();
+}
+
+/** A viewer/commenter changed something locally: put the shared version back */
+async function revertReadOnly() {
+  const keys = [...readOnlyEdits]; readOnlyEdits.clear();
+  for (const k of keys) {
+    const [t, id] = k.split('\u0000') as [Tbl, string];
+    const st = (await sdb.state.get(k)) as StateRow | undefined;
+    const pid = st?.dest || (await table(t).get(id).then((r) => (r ? pidOf(t, r) : '')));
+    const info = pid && shared.get(pid); if (!info) continue;
+    const { data } = await sb().from('writell_shared_items').select('tbl,id,deleted,data').eq('project_id', pid).eq('tbl', t).eq('id', id).maybeSingle();
+    if (data) await applyRemote(data as ItemRow & { tbl: Tbl }, info.key, pid, true);
+    else await remoteTx(t, () => table(t).delete(id)); // they added something new: take it away again
+  }
 }
 
 const OVERLAP = 200; // re-read a few recent changes so none slip through
 async function pull() {
-  let since = Number((await getMeta<number>('lastSeq')) ?? 0);
+  const since = Number((await getMeta<number>('lastSeq')) ?? 0);
   let maxSeq = since;
   let from = Math.max(0, since - OVERLAP);
   for (;;) {
     const { data, error } = await sb().from('writell_items').select('tbl,id,deleted,data,seq').gt('seq', from).order('seq', { ascending: true }).limit(300);
     if (error) throw error;
     if (!data?.length) break;
-    for (const r of data as { tbl: Tbl; id: string; deleted: boolean; data: string | null; seq: number }[]) {
+    for (const r of data as (ItemRow & { tbl: Tbl; seq: number })[]) {
       maxSeq = Math.max(maxSeq, r.seq);
       if (!SYNCED.includes(r.tbl)) continue;
-      await applyRemote(r);
+      await applyRemote(r, dek!, '');
     }
     from = (data[data.length - 1] as { seq: number }).seq;
     if (data.length < 300) break;
   }
   if (maxSeq > since) await setMeta('lastSeq', maxSeq);
-  since = maxSeq;
 }
 
-async function applyRemote(r: { tbl: Tbl; id: string; deleted: boolean; data: string | null }) {
+/** Everything that changed in your shared projects (or all of one project, after joining it) */
+async function pullShared(onlyProject?: string) {
+  if (!shared.size) return;
+  const since = onlyProject ? 0 : Number((await getMeta<number>('sharedSeq')) ?? 0);
+  let maxSeq = since;
+  let from = Math.max(0, since - OVERLAP);
+  for (;;) {
+    let q = sb().from('writell_shared_items').select('project_id,tbl,id,deleted,data,seq').gt('seq', from);
+    if (onlyProject) q = q.eq('project_id', onlyProject);
+    const { data, error } = await q.order('seq', { ascending: true }).limit(300);
+    if (error) throw error;
+    if (!data?.length) break;
+    for (const r of data as (ItemRow & { tbl: Tbl; seq: number; project_id: string })[]) {
+      maxSeq = Math.max(maxSeq, r.seq);
+      const info = shared.get(r.project_id);
+      if (!info || !SYNCED.includes(r.tbl)) continue;
+      await applyRemote(r, info.key, r.project_id);
+    }
+    from = (data[data.length - 1] as { seq: number }).seq;
+    if (data.length < 300) break;
+  }
+  if (!onlyProject && maxSeq > since) await setMeta('sharedSeq', maxSeq);
+}
+
+async function applyRemote(r: { tbl: Tbl; id: string; deleted: boolean; data: string | null }, key: CryptoKey, dest: string, force = false) {
   const k = K(r.tbl, r.id);
-  const prev = (await sdb.state.get(k))?.hash;
+  const st = (await sdb.state.get(k)) as StateRow | undefined;
+  const prev = st?.hash;
   const local = await table(r.tbl).get(r.id);
   const localHash = local ? fingerprint(r.tbl, local) : undefined;
-  const localChanged = local !== undefined && localHash !== prev; // edited here since last sync
+  // a leftover from your private space for a project that is now shared: ignore it
+  if (!dest && local && destOf(r.tbl, pidOf(r.tbl, local))) return;
+  if (!dest && !local && st?.dest) return;
+  const localChanged = !force && local !== undefined && localHash !== prev; // edited here since last sync
   if (r.deleted) {
     if (!local) { if (prev !== undefined) await sdb.state.delete(k); return; }
     if (localChanged && prev !== undefined) return; // edited here after it was deleted elsewhere: keep it (it'll re-upload)
@@ -214,12 +300,13 @@ async function applyRemote(r: { tbl: Tbl; id: string; deleted: boolean; data: st
     return;
   }
   if (!r.data) return;
-  const plain = fromPlain(r.tbl, await decryptJSON<Row>(dek!, r.data));
+  const plain = fromPlain(r.tbl, await decryptJSON<Row>(key, r.data));
   const hash = fingerprint(r.tbl, plain);
-  if (hash === prev && local) return;                 // already have this version
-  if (local && localHash === hash) { await sdb.state.put({ k, hash }); dirty.delete(k); return; }
+  const pid = pidOf(r.tbl, plain);
+  if (hash === prev && local && !force) return;                 // already have this version
+  if (local && localHash === hash) { await sdb.state.put({ k, hash, pid, dest }); dirty.delete(k); return; }
   if (local && localChanged) {
-    // both devices changed it: the newer edit wins
+    // both changed it: the newer edit wins
     const lu = Number(local.updatedAt ?? 0), ru = Number(plain.updatedAt ?? 0);
     if (lu > ru) { dirty.add(k); return; }
   }
@@ -230,7 +317,7 @@ async function applyRemote(r: { tbl: Tbl; id: string; deleted: boolean; data: st
     await remoteTx('scenes', () => db.snapshots.add({ id: uid(), projectId: sc.projectId, sceneId: sc.id, content: sc.content, words: sc.words, reason: 'before-sync', createdAt: now() }));
   }
   await remoteTx(r.tbl, () => table(r.tbl).put(plain));
-  await sdb.state.put({ k, hash });
+  await sdb.state.put({ k, hash, pid, dest });
   dirty.delete(k);
   if (r.tbl === 'scenes') window.dispatchEvent(new CustomEvent('writell:remote-scene', { detail: plain.id }));
 }
@@ -243,6 +330,94 @@ async function remoteTx(t: Tbl, fn: () => Promise<unknown>) {
   });
 }
 
+/* ---- which projects are shared with you ---- */
+let myPriv: CryptoKey | null = null;
+async function myPrivateKey(): Promise<CryptoKey | null> {
+  if (myPriv) return myPriv;
+  const { data } = await sb().from('writell_keys').select('priv').maybeSingle();
+  const priv = (data as { priv?: string | null } | null)?.priv;
+  if (!priv) return null;
+  myPriv = await importPrivateJwk(await decryptJSON<JsonWebKey>(dek!, priv));
+  return myPriv;
+}
+let membershipsMissing = false;
+async function refreshMemberships() {
+  const { data, error } = await sb().from('writell_members').select('project_id,role,key_grant').eq('user_id', userId!);
+  if (error) { if (/writell_members|schema cache|PGRST20/.test(error.message)) { membershipsMissing = true; return; } throw error; }
+  membershipsMissing = false;
+  const rows = (data ?? []) as { project_id: string; role: Role; key_grant: string | null }[];
+  const seen = new Set<string>();
+  let changed = false;
+  for (const m of rows) {
+    seen.add(m.project_id);
+    const have = shared.get(m.project_id);
+    if (have) { if (have.role !== m.role) { have.role = m.role; changed = true; } continue; }
+    if (!m.key_grant) continue; // joined by link on another device that hasn't stored its key yet
+    const priv = await myPrivateKey(); if (!priv) continue;
+    let key: CryptoKey;
+    try { key = await importProjectKey(await openSealed(priv, m.key_grant)); } catch { continue; }
+    shared.set(m.project_id, { role: m.role, key }); changed = true;
+    const isNew = !(await db.projects.get(m.project_id));
+    await pullShared(m.project_id);
+    await scanAll(m.project_id); // anything of yours in it now goes to the shared copy
+    if (isNew) window.dispatchEvent(new CustomEvent('writell:shared-added', { detail: m.project_id }));
+  }
+  for (const pid of [...shared.keys()]) {
+    if (seen.has(pid)) continue;
+    // you left or were removed: the project disappears from this device
+    shared.delete(pid); changed = true;
+    const title = (await db.projects.get(pid))?.title ?? 'A shared project';
+    await dropLocalProject(pid);
+    window.dispatchEvent(new CustomEvent('writell:shared-removed', { detail: { id: pid, title } }));
+  }
+  if (changed) { await saveShared(); subscribePings(); }
+}
+async function dropLocalProject(pid: string) {
+  for (const t of SYNCED) {
+    const rows = t === 'projects' ? (await db.projects.where('id').equals(pid).toArray()) as unknown as Row[] : await table(t).filter((r) => r.projectId === pid).toArray();
+    await remoteTx(t, () => table(t).bulkDelete(rows.map((r) => r.id)));
+    for (const r of rows) { await sdb.state.delete(K(t, r.id)); dirty.delete(K(t, r.id)); }
+  }
+}
+
+async function loadShared() {
+  shared.clear();
+  for (const s of (await getMeta<{ pid: string; role: Role; key: CryptoKey }[]>('shared')) ?? []) shared.set(s.pid, { role: s.role, key: s.key });
+  emitShared(); subscribePings();
+}
+
+/** Start sharing a project you own (called by the Share dialog after creating it on the server) */
+export async function adoptShared(pid: string, role: Role, key: CryptoKey, fetchAll = false) {
+  shared.set(pid, { role, key });
+  await saveShared(); subscribePings();
+  if (fetchAll) await pullShared(pid);
+  await scanAll(pid);
+  await syncNow({ pullFirst: false });
+}
+/** Stop syncing a shared project here. keep = turn it back into your private project */
+export async function forgetShared(pid: string, keep: boolean) {
+  shared.delete(pid); await saveShared(); subscribePings();
+  if (keep) { await scanAll(pid); await syncNow({ pullFirst: false }); } else await dropLocalProject(pid);
+}
+
+/* ---- "something changed" pings between people in a shared project ---- */
+let channels = new Map<string, ReturnType<SupabaseClient['channel']>>();
+let pingTimer = 0;
+function subscribePings() {
+  for (const [pid, ch] of channels) if (!shared.has(pid)) { void sb().removeChannel(ch); channels.delete(pid); }
+  for (const pid of shared.keys()) {
+    if (channels.has(pid)) continue;
+    try {
+      const ch = sb().channel('writell-p-' + pid, { config: { broadcast: { self: false } } });
+      ch.on('broadcast', { event: 'changed' }, () => { window.clearTimeout(pingTimer); pingTimer = window.setTimeout(() => void syncNow(), 600); });
+      ch.subscribe();
+      channels.set(pid, ch);
+    } catch { /* realtime unavailable: the regular check still runs */ }
+  }
+}
+function ping(pid: string) { try { void channels.get(pid)?.send({ type: 'broadcast', event: 'changed', payload: {} }); } catch { /* */ } }
+void channels; channels = channels;
+
 let syncing: Promise<void> | null = null;
 let again = false;
 /** Upload what changed here and download what changed elsewhere */
@@ -252,10 +427,11 @@ export async function syncNow({ pullFirst = true, scan = false } = {}): Promise<
   syncing = (async () => {
     setStatus({ phase: 'syncing', message: undefined });
     try {
+      await refreshMemberships();
       if (scan) await scanAll();
-      if (pullFirst) await pull();
+      if (pullFirst) { await pullShared(); await pull(); }
       await push();
-      if (!pullFirst) await pull();
+      if (!pullFirst) { await pullShared(); await pull(); }
       setStatus({ phase: 'synced', lastSync: Date.now(), message: undefined });
     } catch (e) {
       const msg = (e as { message?: string }).message ?? String(e);
@@ -269,6 +445,7 @@ export async function syncNow({ pullFirst = true, scan = false } = {}): Promise<
   })();
   return syncing;
 }
+void membershipsMissing;
 
 /* ------------------------------------------------------------------ */
 /* accounts                                                            */
@@ -281,8 +458,9 @@ async function loadKeyRow(): Promise<KeyRow | null> {
 
 async function begin(session: Session, key: CryptoKey) {
   const prevUser = await getMeta<string>('userId');
-  if (prevUser && prevUser !== session.user.id) { await sdb.state.clear(); await setMeta('lastSeq', 0); } // a different account on this device
-  dek = key; userId = session.user.id;
+  if (prevUser && prevUser !== session.user.id) { await sdb.state.clear(); await setMeta('lastSeq', 0); await setMeta('sharedSeq', 0); await setMeta('shared', []); } // a different account on this device
+  dek = key; userId = session.user.id; myPriv = null;
+  await loadShared();
   await setMeta('dek', key); await setMeta('userId', userId);
   setStatus({ phase: 'synced', email: session.user.email ?? undefined, message: undefined });
   await syncNow({ scan: true });
@@ -360,7 +538,7 @@ export async function sendPasswordReset(email: string) {
 export async function signOut() {
   window.clearTimeout(pushTimer);
   try { await sb().auth.signOut(); } catch { /* offline: still forget locally */ }
-  dek = null; userId = null; dirty.clear();
+  dek = null; userId = null; dirty.clear(); myPriv = null; shared.clear(); emitShared(); subscribePings();
   await sdb.meta.clear(); await sdb.state.clear();
   setStatus({ phase: 'signed-out', email: undefined, lastSync: undefined, pending: 0, message: undefined });
 }
@@ -389,13 +567,16 @@ export async function startSync() {
     const { data } = await sb().auth.getSession();
     if (!data.session || !key || !uidStored || uidStored !== data.session.user.id) { setStatus({ phase: 'signed-out' }); return; }
     dek = key; userId = uidStored;
+    await loadShared();
     setStatus({ email: data.session.user.email ?? undefined, phase: (await getMeta<boolean>('paused')) ? 'paused' : 'synced' });
     await syncNow({ scan: true });
   } catch (e) {
     setStatus({ phase: navigator.onLine ? 'error' : 'offline', message: (e as Error).message });
   }
   // keep up with other devices while open
-  window.setInterval(() => { if (document.visibilityState === 'visible') void syncNow(); }, 30_000);
+  // every 30 s, or every 8 s while you have shared projects (friends' changes also arrive instantly when realtime works)
+  let lastTick = 0;
+  window.setInterval(() => { const gap = shared.size ? 8_000 : 30_000; if (document.visibilityState === 'visible' && Date.now() - lastTick >= gap) { lastTick = Date.now(); void syncNow(); } }, 4_000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void syncNow(); else void syncNow({ pullFirst: false }); });
   window.addEventListener('online', () => void syncNow());
 }

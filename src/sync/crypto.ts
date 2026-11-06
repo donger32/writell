@@ -74,3 +74,34 @@ export async function rewrapWithPassword(row: KeyRow, oldPassword: string, newPa
 
 export const encryptJSON = async (dek: CryptoKey, v: unknown) => seal(dek, enc.encode(JSON.stringify(v)));
 export const decryptJSON = async <T = unknown>(dek: CryptoKey, s: string): Promise<T> => JSON.parse(dec.decode(await unseal(dek, s)));
+
+/* ---- sharing: a project key, locked for one person using their public key (ECIES: P-256 + AES-GCM) ---- */
+const ECDH = { name: 'ECDH', namedCurve: 'P-256' } as const;
+export async function newProjectKey(): Promise<{ key: CryptoKey; raw: Uint8Array }> {
+  const raw = rand(32);
+  return { raw, key: await subtle().importKey('raw', raw as BufferSource, 'AES-GCM', true, ['encrypt', 'decrypt']) };
+}
+export const importProjectKey = (raw: Uint8Array) => subtle().importKey('raw', raw as BufferSource, 'AES-GCM', true, ['encrypt', 'decrypt']);
+export const exportProjectKey = async (k: CryptoKey) => new Uint8Array(await subtle().exportKey('raw', k));
+/** Lock `raw` so only the owner of `publicJwk` can open it */
+export async function sealFor(publicJwk: string, raw: Uint8Array): Promise<string> {
+  const pub = await subtle().importKey('jwk', JSON.parse(publicJwk), ECDH, false, []);
+  const eph = await subtle().generateKey(ECDH, true, ['deriveKey']);
+  const k = await subtle().deriveKey({ name: 'ECDH', public: pub }, eph.privateKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+  return JSON.stringify({ epk: await subtle().exportKey('jwk', eph.publicKey), ct: await seal(k, raw) });
+}
+/** Open something locked with sealFor, using your private key */
+export async function openSealed(privateKey: CryptoKey, sealed: string): Promise<Uint8Array> {
+  const { epk, ct } = JSON.parse(sealed) as { epk: JsonWebKey; ct: string };
+  const pub = await subtle().importKey('jwk', epk, ECDH, false, []);
+  const k = await subtle().deriveKey({ name: 'ECDH', public: pub }, privateKey, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  return unseal(k, ct);
+}
+export const importPrivateJwk = (jwk: JsonWebKey) => subtle().importKey('jwk', jwk, ECDH, false, ['deriveKey']);
+/* invite links: the secret half lives only in the link (#…), never on the server */
+export const b64url = (u: Uint8Array) => b64(u).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+export const unb64url = (s: string) => unb64(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4));
+export const randomBytes = (n: number) => rand(n);
+async function linkKey(secret: Uint8Array) { return subtle().importKey('raw', secret as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt']); }
+export const sealWithSecret = async (secret: Uint8Array, raw: Uint8Array) => seal(await linkKey(secret), raw);
+export const openWithSecret = async (secret: Uint8Array, s: string) => unseal(await linkKey(secret), s);
