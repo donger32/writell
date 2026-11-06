@@ -2,6 +2,7 @@
   "name": "inkwell",
   "private": true,
   "version": "0.10.0",
+  "description": "Writell: a writing app for novelists (desktop, web and phone)",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -1,11 +1,13 @@
 # Builds the Windows installer on GitHub's Windows machines and publishes it on
-# the Releases page. Runs when a version tag like v0.10.0 is pushed
-# (or by hand from the Actions tab → "Build Windows app" → Run workflow).
+# the Releases page as "Writell <version>". Runs whenever the version number in
+# package.json changes on main (or by hand: Actions tab → "Build Windows app" → Run workflow).
+# A version that already has a release is skipped.
 name: Build Windows app
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths: ['package.json']
 
 permissions:
   contents: write   # to create the release
@@ -15,13 +17,26 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Skip if this version is already released
+        id: check
+        shell: bash
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
+        run: |
+          v=$(node -p "require('./package.json').version")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if gh release view "v$v" >/dev/null 2>&1; then echo "skip=true" >> "$GITHUB_OUTPUT"; echo "v$v already released"; fi
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.skip != 'true'
         with: { node-version: 22, cache: npm }
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.check.outputs.skip != 'true'
       - uses: swatinem/rust-cache@v2
+        if: steps.check.outputs.skip != 'true'
         with: { workspaces: 'src-tauri -> target' }
       - run: npm ci
+        if: steps.check.outputs.skip != 'true'
       - uses: tauri-apps/tauri-action@v0
+        if: steps.check.outputs.skip != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
