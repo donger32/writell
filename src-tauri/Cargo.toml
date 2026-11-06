@@ -1,6 +1,6 @@
 [package]
 name = "inkwell"
-version = "0.12.0"
+version = "0.13.0"
 description = "Writell — a writing environment for novelists"
 edition = "2021"
 

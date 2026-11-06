@@ -561,6 +561,12 @@ let started = false;
 export async function startSync() {
   if (started) return; started = true;
   installHooks();
+  // keep up with other devices while open (set up first, so it also works after signing in later)
+  // every 30 s, or every 8 s while you have shared projects (friends' changes also arrive instantly when realtime works)
+  let lastTick = 0;
+  window.setInterval(() => { const gap = shared.size ? 8_000 : 30_000; if (document.visibilityState === 'visible' && Date.now() - lastTick >= gap) { lastTick = Date.now(); void syncNow(); } }, 4_000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void syncNow(); else void syncNow({ pullFirst: false }); });
+  window.addEventListener('online', () => void syncNow());
   try {
     const key = await getMeta<CryptoKey>('dek');
     const uidStored = await getMeta<string>('userId');
@@ -573,10 +579,4 @@ export async function startSync() {
   } catch (e) {
     setStatus({ phase: navigator.onLine ? 'error' : 'offline', message: (e as Error).message });
   }
-  // keep up with other devices while open
-  // every 30 s, or every 8 s while you have shared projects (friends' changes also arrive instantly when realtime works)
-  let lastTick = 0;
-  window.setInterval(() => { const gap = shared.size ? 8_000 : 30_000; if (document.visibilityState === 'visible' && Date.now() - lastTick >= gap) { lastTick = Date.now(); void syncNow(); } }, 4_000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void syncNow(); else void syncNow({ pullFirst: false }); });
-  window.addEventListener('online', () => void syncNow());
 }

@@ -2,6 +2,16 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.13.0 — sharing projects (stage B)
+- Share button (project Overview, or a project's ⋯ menu): add friends as Editor, Commenter or Viewer; change roles, remove people, make someone else the owner, stop sharing.
+- Invite links (pick the role; expire after 14 days; can be turned off). The secret half of the link never reaches the server.
+- Shared projects stay end-to-end encrypted: each has its own key, locked separately for every member with their personal key.
+- Home: "Shared with me" section, shared badges, "Join with a link". Viewers and commenters get a read-only editor and a notice.
+- Changes in shared projects arrive within seconds (instant ping when realtime is available, otherwise every 8 s).
+- Leaving or being removed takes the project off your devices; the owner deleting a shared project asks first.
+- Fixed: after signing in (when Writell started signed out), automatic syncing didn't start until a restart.
+- Supabase: supabase/writell-stage-b.sql.
+
 ## Changes in v0.12.0 — friends (stage A)
 - Profiles: unique username, display name, picture, short bio. Picked the first time you open Friends.
 - Friends page (sidebar → Friends): find people by username or name, send / accept / decline / cancel requests, remove friends, block / unblock (blocked people can't find you or send requests; they aren't told).
