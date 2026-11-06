@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Menu, Search } from 'lucide-react';
 import { UpdateBanner } from './components/UpdateBanner';
+import { FriendsView } from './components/FriendsView';
 import { Sidebar } from './components/Sidebar';
 import { HomeView, ProjectsView } from './components/Home';
 import { ProjectOverview } from './components/ProjectOverview';
@@ -32,7 +33,7 @@ import { ExportDialog } from './components/ExportDialog';
 
 const PHONE_TITLES: Record<string, string> = {
   home: 'Writell', projects: 'Projects', project: 'Overview', write: 'Write', characters: 'Character', world: 'Worldbuilding', notes: 'Notes',
-  search: 'Search', statistics: 'Statistics', trash: 'Trash', tasks: 'Tasks', family: 'Tree', maps: 'Map', relationships: 'Relation', timelines: 'Timeline', revision: 'Revision',
+  search: 'Search', statistics: 'Statistics', trash: 'Trash', friends: 'Friends', tasks: 'Tasks', family: 'Tree', maps: 'Map', relationships: 'Relation', timelines: 'Timeline', revision: 'Revision',
 };
 
 export default function App() {
@@ -145,6 +146,7 @@ export default function App() {
         {route.view === 'search' && <SearchView projectId={route.projectId} q={route.q} />}
         {route.view === 'statistics' && <StatsView scope={route.scope} />}
         {route.view === 'trash' && <TrashView />}
+        {route.view === 'friends' && <FriendsView />}
         {route.view === 'tasks' && <TasksView projectId={route.projectId} />}
         {route.view === 'family' && <FamilyTreesView projectId={route.projectId} entityId={route.entityId} />}
         {route.view === 'maps' && <MapsView projectId={route.projectId} entityId={route.entityId} />}

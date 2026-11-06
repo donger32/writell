@@ -48,6 +48,7 @@ export function CommandPalette() {
     const list: Cmd[] = [
       { id: 'home', group: 'Go to', label: 'Home', icon: <Home size={14} />, run: () => go({ view: 'home' }) },
       { id: 'new-project', group: 'Actions', label: 'New project', icon: <Plus size={14} />, run: () => { close(); newProjectFlow(); } },
+      { id: 'friends', group: 'Go to', label: 'Friends', also: 'people profile username', icon: <Users size={14} />, run: () => go({ view: 'friends' }) },
       { id: 'settings', group: 'Go to', label: 'Settings', icon: <Settings size={14} />, run: () => setNav({ settingsOpen: true }) },
       { id: 'focus', group: 'Actions', label: 'Toggle focus mode', icon: <Crosshair size={14} />, run: () => setSettings({ focusMode: !getSettings().focusMode }) },
       { id: 'typewriter', group: 'Actions', label: 'Toggle typewriter mode', icon: <AlignVerticalJustifyCenter size={14} />, run: () => setSettings({ typewriter: !getSettings().typewriter }) },

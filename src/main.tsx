@@ -19,6 +19,7 @@ import { startBackupLoop, runBackups } from './backupService';
 import { flushAll } from './saveRegistry';
 import { cleanupOrphans } from './db';
 import { startSync } from './sync/engine';
+import { startSocial } from './social/api';
 
 applySettingsToDOM(getSettings());
 { const m = getSettings().startMode; if (m === 'focus' || m === 'typewriter') setSettings({ focusMode: m === 'focus', typewriter: m === 'typewriter' }); else setSettings({ focusMode: false, typewriter: false }); }
@@ -26,7 +27,7 @@ requestPersistentStorage();
 startBackupLoop();
 cleanupOrphans();
 // account sync (does nothing until you sign in)
-setTimeout(() => { void startSync(); }, 800);
+setTimeout(() => { void startSync().then(startSocial); }, 800);
 window.addEventListener('beforeunload', () => { flushAll(); });
 
 // Desktop app: behave like an app, not a web page

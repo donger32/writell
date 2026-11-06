@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { orderedTools } from '../sidebarTools';
 import { SyncBadge } from './AccountSettings';
+import { useSocial } from '../social/api';
 import { useOpenTasks } from './story/Tasks';
 import { Avatar } from './story/common';
 import { openEntity } from './story/links';
@@ -36,6 +37,7 @@ export function Sidebar() {
   const project = useLiveQuery(() => (projectId ? db.projects.get(projectId) : undefined), [projectId]);
   const [collapsed, toggle] = useCollapsed();
   const phone = usePhone();
+  const social = useSocial();
   // phones always get the full menu (it slides in over the page)
   const icon = s.sidebarCollapsed && !phone;
   const trashCount = useLiveQuery(() => db.trash.count(), []);
@@ -78,6 +80,7 @@ export function Sidebar() {
             <WsBtn label="Home" icon={Home} active={route.view === 'home'} onClick={() => go({ view: 'home' })} />
             <WsBtn label="All projects" icon={LayoutGrid} active={route.view === 'projects'} onClick={() => go({ view: 'projects' })} />
             {s.showStats && <WsBtn label="Statistics" icon={BarChart3} active={route.view === 'statistics'} onClick={() => go({ view: 'statistics', scope: project.id })} />}
+            <WsBtn label={social.incoming.length ? `Friends (${social.incoming.length} requests)` : 'Friends'} icon={Users} active={route.view === 'friends'} onClick={() => go({ view: 'friends' })} dot={!!social.incoming.length} />
             <WsBtn label={trashCount ? `Trash (${trashCount})` : 'Trash'} icon={Trash2} active={route.view === 'trash'} onClick={() => go({ view: 'trash' })} dot={!!trashCount} />
           </div>
         ) : (
@@ -85,6 +88,7 @@ export function Sidebar() {
             <Item label="Home" icon={Home} active={route.view === 'home'} onClick={() => go({ view: 'home' })} />
             <Item label="Projects" icon={LayoutGrid} active={route.view === 'projects'} onClick={() => go({ view: 'projects' })} />
             {s.showStats && <Item label="Statistics" icon={BarChart3} active={route.view === 'statistics'} onClick={() => go({ view: 'statistics', ...(project ? { scope: project.id } : {}) })} />}
+            <Item label="Friends" icon={Users} active={route.view === 'friends'} onClick={() => go({ view: 'friends' })} badge={social.incoming.length ? String(social.incoming.length) : undefined} />
             <Item label="Trash" icon={Trash2} active={route.view === 'trash'} onClick={() => go({ view: 'trash' })} badge={trashCount ? String(trashCount) : undefined} />
           </Section>
         )}

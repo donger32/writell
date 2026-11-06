@@ -371,6 +371,11 @@ export async function setPaused(paused: boolean) {
   else { setStatus({ phase: 'synced' }); await syncNow({ scan: true }); }
 }
 
+/** For the friends / sharing features: the signed-in connection, your id and data key */
+export const supabaseClient = () => sb();
+export const currentUserId = () => userId;
+export const dataKey = () => dek;
+
 /* ------------------------------------------------------------------ */
 /* start-up                                                            */
 /* ------------------------------------------------------------------ */

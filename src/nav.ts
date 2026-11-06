@@ -19,6 +19,7 @@ export type Route =
   | { view: 'timelines'; projectId: string; tab?: 'world' | 'story' | 'character'; timelineId?: string; characterId?: string; eventId?: string }
   | { view: 'statistics'; scope?: string }
   | { view: 'trash' }
+  | { view: 'friends' }
   | { view: 'tasks'; projectId: string }
   | { view: 'revision'; projectId: string };
 
