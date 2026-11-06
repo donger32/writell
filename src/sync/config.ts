@@ -3,4 +3,4 @@
 export const SUPABASE_URL = 'https://qiebccydwcaufqlzlpce.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_8s52ThPUle-l9RkzXSpODg_pfPKOk00';
 /** Where the "confirm your email" link should lead */
-export const WEB_APP_URL = 'https://writell.netlify.app';
+export const WEB_APP_URL = 'https://donger32.github.io/writell/';

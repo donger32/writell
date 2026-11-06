@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Menu, Search } from 'lucide-react';
+import { UpdateBanner } from './components/UpdateBanner';
 import { Sidebar } from './components/Sidebar';
 import { HomeView, ProjectsView } from './components/Home';
 import { ProjectOverview } from './components/ProjectOverview';
@@ -126,6 +127,7 @@ export default function App() {
       {sbOpen && <div className="sb-backdrop" onClick={() => setSbOpen(false)} aria-hidden="true" />}
       <a href="#main-content" className="skip-link" onClick={(e) => { e.preventDefault(); (document.querySelector('.prose, #main-content') as HTMLElement | null)?.focus(); }}>Skip to content</a>
       <main className="main" id="main-content" tabIndex={-1}>
+        <UpdateBanner />
         {!hideChrome && (
           <div className="phone-bar">
             <button className="icon-btn" aria-label="Menu" aria-expanded={sbOpen} onClick={() => setSbOpen(true)}><Menu size={20} /></button>

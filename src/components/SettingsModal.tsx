@@ -193,7 +193,7 @@ export function SettingsModal() {
             {!isTauri() && <p className="muted">On a school-managed Chromebook, the school's administrators may have access to the device's browser data. Clearing browser data for this site will also delete your projects — keep backup files.</p>}
             <h3>Reset</h3>
             <button className="btn ghost sm" onClick={async () => { if (await confirmDialog('Reset all appearance and editor settings?', 'Your projects are not affected.', { ok: 'Reset' })) { resetSettings(); toast('Settings reset'); } }}>Reset settings to defaults</button>
-            <p className="muted small">Writell 0.10.0</p>
+            <p className="muted small">Writell 0.11.0</p>
           </>}
         </div>
       </div>

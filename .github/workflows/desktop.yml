@@ -39,11 +39,15 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # signs the update so the app only installs updates made by you
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         with:
           tagName: v__VERSION__
           releaseName: Writell __VERSION__
           releaseBody: |
-            Download **Writell___VERSION___x64-setup.exe** below and run it. Installing over an older version keeps your projects.
+            Already have Writell 0.11 or newer on your PC? It will offer this update by itself.
+            Otherwise download **Writell___VERSION___x64-setup.exe** below and run it. Installing over an older version keeps your projects.
             If Windows says "Windows protected your PC", click More info → Run anyway.
           releaseDraft: false
           prerelease: false

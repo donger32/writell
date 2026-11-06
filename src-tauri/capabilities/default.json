@@ -1,8 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Inkwell main window: native save/open dialogs and writing backup files to user folders",
-  "windows": ["main"],
+  "description": "Writell main window: native save/open dialogs, writing backup files to user folders, and installing updates",
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-destroy",
@@ -11,19 +13,67 @@
     "dialog:allow-open",
     {
       "identifier": "fs:allow-write-text-file",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$DOCUMENT/**" }, { "path": "$DESKTOP/**" }, { "path": "$DOWNLOAD/**" }]
+      "allow": [
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        },
+        {
+          "path": "$DESKTOP/**"
+        },
+        {
+          "path": "$DOWNLOAD/**"
+        }
+      ]
     },
     {
       "identifier": "fs:allow-write-file",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$DOCUMENT/**" }, { "path": "$DESKTOP/**" }, { "path": "$DOWNLOAD/**" }]
+      "allow": [
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        },
+        {
+          "path": "$DESKTOP/**"
+        },
+        {
+          "path": "$DOWNLOAD/**"
+        }
+      ]
     },
     {
       "identifier": "fs:allow-read-dir",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$DOCUMENT/**" }]
+      "allow": [
+        {
+          "path": "$HOME/**"
+        },
+        {
+          "path": "$DOCUMENT/**"
+        }
+      ]
     },
     {
       "identifier": "fs:allow-remove",
-      "allow": [{ "path": "$HOME/**/*.inkwell.json" }, { "path": "$DOCUMENT/**/*.inkwell.json" }]
-    }
+      "allow": [
+        {
+          "path": "$HOME/**/*.writell.json"
+        },
+        {
+          "path": "$DOCUMENT/**/*.writell.json"
+        },
+        {
+          "path": "$HOME/**/*.inkwell.json"
+        },
+        {
+          "path": "$DOCUMENT/**/*.inkwell.json"
+        }
+      ]
+    },
+    "updater:default",
+    "process:allow-restart"
   ]
 }

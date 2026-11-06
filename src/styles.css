@@ -944,3 +944,7 @@ textarea.reltext-body { resize: none; border: 0; outline: none; background: tran
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .acct-explain > svg { flex: none; margin-top: 2px; }
+
+/* PC app: new version available */
+.update-bar { position: absolute; z-index: 30; left: 50%; top: 10px; transform: translateX(-50%); width: min(560px, calc(100% - 24px)); display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; background: color-mix(in srgb, var(--accent) 14%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius: 10px; box-shadow: var(--shadow); font-size: 13px; animation: pop .16s ease; }
+.update-bar > svg { color: var(--accent); flex: none; }
