@@ -972,3 +972,5 @@ textarea.reltext-body { resize: none; border: 0; outline: none; background: tran
 .uname-input { display: flex; align-items: center; gap: 6px; }
 .uname-input .input { flex: 1; }
 @media (max-width: 700px) { .person { flex-wrap: wrap; } .person-actions { padding: 0 8px 8px 58px; } }
+.friends-page .people, .friends-page .person, .friends-page .find-box { width: 100%; box-sizing: border-box; }
+.friends-page .col.gap-s { align-items: stretch; }

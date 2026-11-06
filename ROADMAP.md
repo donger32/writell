@@ -2,6 +2,14 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.12.0 — friends (stage A)
+- Profiles: unique username, display name, picture, short bio. Picked the first time you open Friends.
+- Friends page (sidebar → Friends): find people by username or name, send / accept / decline / cancel requests, remove friends, block / unblock (blocked people can't find you or send requests; they aren't told).
+- Online status: friends see a green dot and "seen 5 min ago"; you can hide it (Edit profile). Only friends can see it.
+- Each account gets a key pair for sharing projects privately (stage B).
+- Phone: tapping the page you're already on in the menu now closes the menu.
+- Supabase: supabase/writell-stage-a.sql (+ writell-stage-a-fix.sql for the blocked list).
+
 ## Changes in v0.11.0 — GitHub
 - Code lives at github.com/donger32/writell. The website is published to GitHub Pages (donger32.github.io/writell) on every push, and the Windows installer is built on GitHub and published on the Releases page.
 - PC app: one-click updates ("Writell X is available → Update now"), signed and checked against the app's built-in key.

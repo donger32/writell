@@ -46,6 +46,17 @@ export default function App() {
   const [sbOpen, setSbOpen] = useState(false);
   const routeKey = JSON.stringify(route);
   useEffect(() => setSbOpen(false), [routeKey, nav.settingsOpen, nav.paletteOpen, nav.helpOpen, nav.newProject, nav.exportFor, nav.quickNote]);
+  // tapping any item in the open menu closes it, even the page you're already on
+  useEffect(() => {
+    if (!sbOpen) return;
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.closest('.sidebar') && t.closest('.nav-item, .tree-row, .ws-btn') && !t.closest('.sb-label, .tree-toggle, [aria-label="Search"]')) window.setTimeout(() => setSbOpen(false), 0);
+    };
+    // capture: look at the tap before the menu re-draws itself
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, [sbOpen]);
   // swipe the open menu to the left to close it (it follows your finger)
   useEffect(() => {
     if (!sbOpen) return;

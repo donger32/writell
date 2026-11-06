@@ -86,7 +86,7 @@ export function refreshSocial(): Promise<void> {
         friends: pick(friendIds).sort(byName),
         incoming: pick(friendships.filter((f) => f.status === 'pending' && f.addressee === uid).map((f) => f.requester)),
         outgoing: pick(friendships.filter((f) => f.status === 'pending' && f.requester === uid).map((f) => f.addressee)),
-        blocked: pick(blockedIds),
+        blocked: blockedIds.map((i) => byId.get(i) ?? { id: i, username: 'blocked', display_name: 'Someone you blocked', bio: '', avatar: null, public_key: null }),
         showOnline: (pres as { visible?: boolean } | null)?.visible ?? true,
       });
     } catch (e) {
@@ -125,9 +125,10 @@ export async function saveProfile(p: { username: string; display_name: string; b
 }
 export async function setShowOnline(visible: boolean) {
   const uid = me();
+  const before = state.showOnline;
+  set({ showOnline: visible }); // show the change straight away
   const { error } = await sb().from('writell_presence').upsert({ user_id: uid, last_seen: new Date().toISOString(), visible });
-  if (error) throw friendly(error);
-  set({ showOnline: visible });
+  if (error) { set({ showOnline: before }); throw friendly(error); }
 }
 
 /** A key pair for sharing projects privately (stage B): public half on your profile, private half locked with your data key */

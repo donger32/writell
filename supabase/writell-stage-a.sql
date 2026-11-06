@@ -47,6 +47,11 @@ create or replace function public.writell_blocked(a uuid, b uuid) returns boolea
 language sql stable security definer set search_path = public as $$
   select exists (select 1 from writell_blocks where (blocker = a and blocked = b) or (blocker = b and blocked = a))
 $$;
+-- true when that person blocked YOU (you can still see people you blocked, so you can unblock them)
+create or replace function public.writell_blocked_me(other uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from writell_blocks where blocker = other and blocked = auth.uid())
+$$;
 create or replace function public.writell_are_friends(a uuid, b uuid) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (select 1 from writell_friendships where status = 'accepted'
@@ -61,7 +66,7 @@ alter table public.writell_presence    enable row level security;
 -- profiles: signed-in people can look each other up (unless one blocked the other); you edit only yours
 drop policy if exists "see profiles" on public.writell_profiles;
 create policy "see profiles" on public.writell_profiles for select to authenticated
-  using (id = auth.uid() or not public.writell_blocked(id, auth.uid()));
+  using (id = auth.uid() or not public.writell_blocked_me(id));
 drop policy if exists "own profile" on public.writell_profiles;
 create policy "own profile" on public.writell_profiles for insert to authenticated with check (id = auth.uid());
 drop policy if exists "edit own profile" on public.writell_profiles;
@@ -99,4 +104,4 @@ create policy "update presence" on public.writell_presence for update to authent
 
 revoke all on public.writell_profiles, public.writell_friendships, public.writell_blocks, public.writell_presence from anon;
 grant select, insert, update, delete on public.writell_profiles, public.writell_friendships, public.writell_blocks, public.writell_presence to authenticated;
-grant execute on function public.writell_blocked(uuid, uuid), public.writell_are_friends(uuid, uuid) to authenticated;
+grant execute on function public.writell_blocked(uuid, uuid), public.writell_are_friends(uuid, uuid), public.writell_blocked_me(uuid) to authenticated;
