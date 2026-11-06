@@ -1,0 +1,199 @@
+import { useLiveQuery } from 'dexie-react-hooks';
+import { useState } from 'react';
+import { Paperclip, Download, Upload, Folder, Pin, Trash2, Plus, X, Inbox, ImagePlus, FileText, BookOpen, Check } from 'lucide-react';
+import { db, uid, type Entity } from '../../db';
+import { saveBinary } from '../../util';
+import { NOTE_TYPES, addLink, createEntity, deleteEntity, pickImage, removeLink, updateEntity } from '../../entities';
+import { toastTrashed } from '../TrashView';
+import { go } from '../../nav';
+import { confirmDialog, toast } from '../ui';
+import { Avatar, Field, Picker, TagEditor, useProjectOptions } from './common';
+import { EntityShell } from './EntityShell';
+import { openEntity } from './links';
+import { TimelineBox } from '../visual/TimelineBox';
+
+/** Pick .txt / .md files; each becomes a note in the Inbox (a first "# Heading" becomes its title) */
+function importNoteFiles(projectId: string) {
+  const input = document.createElement('input');
+  input.type = 'file'; input.multiple = true; input.accept = '.txt,.md,.markdown,text/plain,text/markdown';
+  input.onchange = async () => {
+    const files = Array.from(input.files ?? []);
+    let n = 0;
+    for (const f of files) {
+      try {
+        let body = (await f.text()).replace(/\r\n/g, '\n').trim();
+        let title = f.name.replace(/\.(txt|md|markdown)$/i, '');
+        const h = body.match(/^#{1,3}\s+(.+)\n?/);
+        if (h) { title = h[1].trim(); body = body.slice(h[0].length).trim(); }
+        await createEntity(projectId, 'note', title, { type: 'Idea', folder: '', body, inbox: true });
+        n++;
+      } catch { /* skip unreadable file */ }
+    }
+    if (n) toast(`Imported ${n} note${n > 1 ? 's' : ''} into the Inbox`);
+  };
+  input.click();
+}
+
+export function NotesView({ projectId, entityId, filter: initial }: { projectId: string; entityId?: string; filter?: string }) {
+  const items = useLiveQuery(() => db.entities.where('[projectId+kind]').equals([projectId, 'note']).toArray(), [projectId]);
+  const opts = useProjectOptions(projectId);
+  const [filter, setFilter] = useState(initial ?? 'All');
+  if (!items || !opts) return null;
+  const folders = [...new Set(items.map((n) => String(n.fields.folder ?? '')).filter(Boolean))].sort();
+  const inboxCount = items.filter((n) => n.fields.inbox).length;
+  const shown = items.filter((n) =>
+    filter === 'All' ? true : filter === 'Inbox' ? n.fields.inbox : filter === 'Pinned' ? n.fields.pinned : filter === 'Open threads' ? n.fields.type === 'Plot thread' && !n.fields.resolved
+      : filter.startsWith('folder:') ? n.fields.folder === filter.slice(7) : n.fields.type === filter,
+  ).map((n) => ({ ...n, favorite: !!n.fields.pinned })); // pinned notes float to the top
+  const create = async () => {
+    const type = (NOTE_TYPES as readonly string[]).includes(filter) ? filter : 'Idea';
+    const folder = filter.startsWith('folder:') ? filter.slice(7) : '';
+    const id = await createEntity(projectId, 'note', '', { type, folder, body: '', inbox: filter === 'Inbox' });
+    go({ view: 'notes', projectId, entityId: id });
+  };
+  const active = items.find((n) => n.id === entityId);
+  return (
+    <EntityShell title="Notes" items={shown} activeId={entityId} showAvatar={false} onOpen={(id) => go({ view: 'notes', projectId, entityId: id })}
+      onNew={create} newLabel="Note"
+      renderSub={(n) => [n.fields.inbox ? 'Inbox' : String(n.fields.type ?? '') + (n.fields.type === 'Plot thread' ? (n.fields.resolved ? ' (resolved)' : ' (open)') : ''), String(n.fields.body ?? '').slice(0, 80)].filter(Boolean).join(' · ')}
+      filters={
+        <div className="filter-chips">
+          {['All', 'Inbox', 'Pinned', ...(items.some((n) => n.fields.type === 'Plot thread') ? ['Open threads'] : [])].map((c) => <button key={c} className={'chip' + (filter === c ? ' on' : '')} onClick={() => setFilter(c)}>{c === 'Inbox' ? `Inbox${inboxCount ? ` (${inboxCount})` : ''}` : c}</button>)}
+          {NOTE_TYPES.filter((t) => items.some((n) => n.fields.type === t)).map((c) => <button key={c} className={'chip' + (filter === c ? ' on' : '')} onClick={() => setFilter(c)}>{c}</button>)}
+          {folders.map((f) => <button key={f} className={'chip' + (filter === 'folder:' + f ? ' on' : '')} onClick={() => setFilter('folder:' + f)}><Folder size={11} /> {f}</button>)}
+          <button className="chip" title="Turn text or Markdown files into notes (they land in the Inbox)" onClick={() => importNoteFiles(projectId)}><Upload size={11} /> Import…</button>
+        </div>
+      }
+      empty={<><h3>Notes & ideas</h3><p className="muted">Press <kbd>Ctrl + Shift + N</kbd> anywhere to jot an idea into the inbox without deciding where it belongs.</p><button className="btn primary" onClick={create}><Plus size={14} /> New note</button></>}>
+      {active && <NoteEditor key={active.id} n={active} opts={opts} folders={folders} />}
+    </EntityShell>
+  );
+}
+
+function NoteEditor({ n, opts, folders }: { n: Entity; opts: NonNullable<ReturnType<typeof useProjectOptions>>; folders: string[] }) {
+  const set = (k: string, v: unknown) => updateEntity(n.id, { fields: { [k]: v } });
+  const images = (n.fields.images as string[] | undefined) ?? [];
+  const links = useLiveQuery(() => db.links.where('[fromType+fromId]').equals(['entity', n.id]).filter((l) => l.relation === 'about').toArray(), [n.id]);
+  const [big, setBig] = useState<string | null>(null);
+  const allOpts = [...opts.characterOpts, ...opts.worldOpts, ...opts.chapterOpts, ...opts.sceneOpts];
+  const linkedIds = links?.map((l) => l.toId) ?? [];
+  const typeOf = (id: string) => opts.byId.has(id) ? 'entity' : opts.chapters.some((c) => c.id === id) ? 'chapter' : 'scene';
+
+  return (
+    <div className="note-editor">
+      <div className="row gap-s wrap note-bar">
+        {!!n.fields.inbox && <button className="btn sm" onClick={() => set('inbox', false)}><Check size={13} /> File it (remove from inbox)</button>}
+        {!n.fields.inbox && <button className="btn ghost sm" onClick={() => set('inbox', true)}><Inbox size={13} /> Back to inbox</button>}
+        <select className="pill-select" value={String(n.fields.type ?? 'Idea')} onChange={(e) => set('type', e.target.value)}>{NOTE_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
+        {n.fields.type === 'Plot thread' && <label className="check small"><input type="checkbox" checked={!!n.fields.resolved} onChange={(e) => set('resolved', e.target.checked)} /> Resolved</label>}
+        <input className="pill-select" list="note-folders" placeholder="Folder…" defaultValue={String(n.fields.folder ?? '')} onBlur={(e) => set('folder', e.target.value.trim())} style={{ width: 130 }} />
+        <datalist id="note-folders">{folders.map((f) => <option key={f} value={f} />)}</datalist>
+        <span className="grow" />
+        <button className={'icon-btn' + (n.fields.pinned ? ' on' : '')} title="Pin note" onClick={() => set('pinned', !n.fields.pinned)}><Pin size={15} /></button>
+        <button className="icon-btn" title="Delete note" onClick={async () => { go({ view: 'notes', projectId: n.projectId }); toastTrashed(n.name || 'Note', await deleteEntity(n.id)); }}><Trash2 size={15} /></button>
+      </div>
+      <Field wrap className="name-field" value={n.name} placeholder="Title" onCommit={(v) => updateEntity(n.id, { name: v })} />
+      <Field className="note-body" value={String(n.fields.body ?? '')} long placeholder="Write anything…" onCommit={(v) => set('body', v)} />
+      <TagEditor tags={n.tags} suggestions={opts.allTags} onChange={(tags) => updateEntity(n.id, { tags })} />
+
+      <div className="note-section">
+        <div className="row"><h4 className="grow">Linked to</h4>
+          <Picker options={allOpts} exclude={linkedIds} buttonLabel="Link" placeholder="Character, place, chapter, scene…" onPick={(id) => addLink(n.projectId, 'entity', n.id, typeOf(id), id, 'about')} />
+        </div>
+        <div className="chips">
+          {links?.map((l) => {
+            const ent = opts.byId.get(l.toId);
+            const ch = opts.chapters.find((c) => c.id === l.toId);
+            const sc = opts.sceneOpts.find((s) => s.id === l.toId);
+            const label = ent?.name ?? ch?.title ?? sc?.label ?? '(deleted)';
+            const open = () => ent ? openEntity(ent) : ch ? go({ view: 'project', projectId: n.projectId }) : sc && go({ view: 'write', projectId: n.projectId, sceneId: sc.id });
+            return (
+              <span key={l.id} className="linkchip">
+                {ent?.kind === 'character' ? <Avatar name={label} image={ent.fields.image as string} size={18} /> : ch ? <BookOpen size={12} /> : sc ? <FileText size={12} /> : null}
+                <button className="link" onClick={open}>{label}</button>
+                <button aria-label="Unlink" onClick={() => removeLink(l.id)}><X size={11} /></button>
+              </span>
+            );
+          })}
+          {!linkedIds.length && <span className="muted small">Not linked to anything yet.</span>}
+        </div>
+      </div>
+
+      <div className="note-section">
+        <div className="row"><h4 className="grow">Image references</h4>
+          <button className="btn ghost sm" onClick={async () => { const d = await pickImage(1400); if (d) set('images', [...images, d]); }}><ImagePlus size={13} /> Add image</button>
+        </div>
+        <div className="img-grid">
+          {images.map((src, i) => (
+            <div key={i} className="img-tile">
+              <img src={src} alt="" onClick={() => setBig(src)} />
+              <button className="tile-x" aria-label="Remove image" onClick={() => set('images', images.filter((_, j) => j !== i))}><X size={12} /></button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="note-section"><h4>On the timeline</h4><TimelineBox projectId={n.projectId} kind="note" id={n.id} name={n.name || 'Note'} involve={[n.id]} /></div>
+      <Attachments ownerId={n.id} projectId={n.projectId} />
+      {big && <div className="overlay" onMouseDown={() => setBig(null)}><img src={big} alt="" className="lightbox" /></div>}
+    </div>
+  );
+}
+
+/** Ctrl+Shift+N — capture an idea without leaving what you're doing */
+export function QuickNote({ projectId, onClose }: { projectId: string | null; onClose: () => void }) {
+  const projects = useLiveQuery(() => db.projects.orderBy('openedAt').reverse().filter((p) => !p.archived).toArray(), []);
+  const [pid, setPid] = useState(projectId ?? '');
+  const [text, setText] = useState('');
+  const target = pid || projects?.[0]?.id || '';
+  const save = async () => {
+    if (!text.trim() || !target) return onClose();
+    const [first, ...rest] = text.trim().split('\n');
+    await createEntity(target, 'note', first.slice(0, 80), { type: 'Idea', body: first.length > 80 ? text.trim() : rest.join('\n').trim(), inbox: true });
+    toast('Saved to inbox');
+    onClose();
+  };
+  return (
+    <div className="overlay top" onMouseDown={(e) => e.target === e.currentTarget && save()}>
+      <div className="dialog quicknote" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) save(); }}>
+        <div className="row gap-s"><Inbox size={16} className="accent" /><h3 className="grow">Quick idea</h3>
+          {projects && projects.length > 1 && <select className="pill-select" value={target} onChange={(e) => setPid(e.target.value)}>{projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select>}
+        </div>
+        {!projects?.length ? <p className="muted">Create a project first.</p> : (
+          <textarea className="input" rows={5} autoFocus placeholder="What if the lighthouse keeper was the one who…" value={text} onChange={(e) => setText(e.target.value)} />
+        )}
+        <div className="row end gap-s"><span className="muted small grow">Ctrl + Enter to save · Esc to discard</span>
+          <button className="btn ghost" onClick={onClose}>Discard</button><button className="btn primary" onClick={save}>Save to inbox</button></div>
+      </div>
+    </div>
+  );
+}
+
+const MAX_FILE = 50 * 1024 * 1024;
+const fmtSize = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+
+/** Any files (PDFs, documents, audio…) attached to a note, stored inside the project */
+export function Attachments({ ownerId, projectId }: { ownerId: string; projectId: string }) {
+  const files = useLiveQuery(() => db.files.where('ownerId').equals(ownerId).sortBy('createdAt'), [ownerId]);
+  const [over, setOver] = useState(false);
+  const add = async (list: FileList | File[]) => {
+    for (const f of Array.from(list)) {
+      if (f.size > MAX_FILE) { toast(`${f.name} is larger than 50 MB`); continue; }
+      await db.files.add({ id: uid(), projectId, ownerId, name: f.name, type: f.type || 'application/octet-stream', size: f.size, data: f, createdAt: Date.now() });
+    }
+  };
+  const pick = () => { const i = document.createElement('input'); i.type = 'file'; i.multiple = true; i.onchange = () => i.files && add(i.files); i.click(); };
+  return (
+    <div className={'note-section' + (over ? ' drop-on' : '')} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); add(e.dataTransfer.files); }}>
+      <div className="row"><h4 className="grow">Attachments</h4><button className="btn ghost sm" onClick={pick}><Paperclip size={13} /> Attach file</button></div>
+      {!files?.length && <p className="muted small">Attach research PDFs, documents, audio or anything else (up to 50 MB each), or drop files here. They're kept inside the project and included in full backup files.</p>}
+      {files?.map((f) => (
+        <div key={f.id} className="row gap-s file-row">
+          <Paperclip size={13} className="muted" />
+          <span className="grow ellipsis">{f.name}</span><span className="muted small">{fmtSize(f.size)}</span>
+          <button className="icon-btn sm" title="Save a copy" aria-label={`Save ${f.name}`} onClick={async () => saveBinary(f.name, new Uint8Array(await f.data.arrayBuffer()), f.type)}><Download size={13} /></button>
+          <button className="icon-btn sm" title="Remove" aria-label={`Remove ${f.name}`} onClick={async () => { if (await confirmDialog(`Remove ${f.name}?`, undefined, { danger: true, ok: 'Remove' })) db.files.delete(f.id); }}><Trash2 size={13} /></button>
+        </div>
+      ))}
+    </div>
+  );
+}
