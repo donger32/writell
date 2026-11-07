@@ -2,6 +2,10 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.14.1
+- Co-writers' cursors are easier to see: a bold, full-height line in their colour with their name.
+- Settings → Appearance → Mouse cursor: System, Black or White. Writell's own smooth arrow, text cursor and pointing hand, only inside Writell.
+
 ## Changes in v0.14.0 — live co-writing (stage C)
 - In shared projects, scenes are written together live: everyone's typing merges letter by letter (Yjs), nobody overwrites anybody.
 - See each other's cursors and selections with names in their colour; the scene header shows a live dot and who's in the scene.

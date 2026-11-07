@@ -80,6 +80,13 @@ export function SettingsModal() {
               {s.customThemes.some((t) => t.name === s.theme.name) && <button className="btn ghost sm" onClick={() => setSettings({ customThemes: s.customThemes.filter((t) => t.name !== s.theme.name), theme: THEMES[0] })}><Trash2 size={13} /> Delete this theme</button>}
             </div>
 
+            <h3>Mouse cursor</h3>
+            <div className="seg" role="radiogroup" aria-label="Mouse cursor">
+              {([['system', 'System'], ['black', 'Black'], ['white', 'White']] as const).map(([v, l]) => (
+                <button key={v} role="radio" aria-checked={(s.mouseCursor ?? 'system') === v} className={(s.mouseCursor ?? 'system') === v ? 'on' : ''} onClick={() => setSettings({ mouseCursor: v })}>{l}</button>
+              ))}
+            </div>
+            <p className="muted small">Writell's own smooth pointer. It only changes inside Writell; the rest of your computer keeps its usual cursor.</p>
             <h3>Writing area</h3>
             <p className="muted small">The page you write on can look different from the rest of the app.</p>
             <div className="theme-grid">
@@ -193,7 +200,7 @@ export function SettingsModal() {
             {!isTauri() && <p className="muted">On a school-managed Chromebook, the school's administrators may have access to the device's browser data. Clearing browser data for this site will also delete your projects — keep backup files.</p>}
             <h3>Reset</h3>
             <button className="btn ghost sm" onClick={async () => { if (await confirmDialog('Reset all appearance and editor settings?', 'Your projects are not affected.', { ok: 'Reset' })) { resetSettings(); toast('Settings reset'); } }}>Reset settings to defaults</button>
-            <p className="muted small">Writell 0.14.0</p>
+            <p className="muted small">Writell 0.14.1</p>
           </>}
         </div>
       </div>

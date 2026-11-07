@@ -63,6 +63,8 @@ export interface Settings {
   sbRecentChars: boolean;
   /** extra space left and right inside the writing column, px */
   editorMargin: number;
+  /** mouse pointer inside Writell: the system one, or Writell's own smooth black / white */
+  mouseCursor: 'system' | 'black' | 'white';
   showStatsBar: boolean;
   autosaveDelay: number;      // ms
   autoBackupMinutes: number;  // 0 = off
@@ -114,6 +116,7 @@ const DEFAULTS: Settings = {
   sbRecentScenes: false,
   sbRecentChars: false,
   editorMargin: 0,
+  mouseCursor: 'system',
   showStatsBar: true,
   autosaveDelay: 600,
   autoBackupMinutes: 10,
@@ -186,6 +189,7 @@ export function applySettingsToDOM(s: Settings) {
   r.setProperty('--ed-lh', String(s.lineHeight));
   r.setProperty('--ed-width', s.editorWidth + 'px');
   r.setProperty('--ed-margin', (s.editorMargin ?? 0) + 'px');
+  applyCursor(s.mouseCursor ?? 'system');
   r.setProperty('--ed-para', s.paragraphSpacing + 'em');
   r.setProperty('--sidebar-w', s.sidebarWidth + 'px');
   r.setProperty('zoom', String(s.uiScale));
@@ -198,4 +202,26 @@ export const isPinned = (p: Omit<PinRef, 'projectId'>) => getSettings().pins.som
 export function togglePin(p: PinRef) {
   const pins = getSettings().pins;
   setSettings({ pins: pins.some((x) => x.kind === p.kind && x.id === p.id) ? pins.filter((x) => !(x.kind === p.kind && x.id === p.id)) : [...pins, p] });
+}
+
+/* ---- custom mouse cursor (only inside Writell) ---- */
+const svg = (body: string) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>${body}</svg>`)}")`;
+function cursorSet(fill: string, edge: string) {
+  const shadow = `<defs><filter id='s' x='-30%' y='-30%' width='160%' height='160%'><feDropShadow dx='0' dy='1' stdDeviation='0.8' flood-opacity='0.35'/></filter></defs>`;
+  // a smooth, rounded arrow
+  const arrow = svg(`${shadow}<path filter='url(#s)' d='M5.2 3.2 18.4 12.6a.6.6 0 0 1-.28 1.08l-5.3.62 3.05 5.6a.7.7 0 0 1-.28.95l-1.6.86a.7.7 0 0 1-.95-.28l-3.05-5.62-3.9 3.6a.6.6 0 0 1-1-.44V3.7a.6.6 0 0 1 .96-.5Z' fill='${fill}' stroke='${edge}' stroke-width='1.3' stroke-linejoin='round'/>`);
+  // a text cursor (I-beam)
+  const beam = svg(`${shadow}<path filter='url(#s)' d='M9 4.5h1.6c.6 0 1.1.25 1.4.7.3-.45.8-.7 1.4-.7H15M12 5.4v13.2M9 19.5h1.6c.6 0 1.1-.25 1.4-.7.3.45.8.7 1.4.7H15M10.3 12h3.4' fill='none' stroke='${edge}' stroke-width='3.2' stroke-linecap='round'/><path d='M9 4.5h1.6c.6 0 1.1.25 1.4.7.3-.45.8-.7 1.4-.7H15M12 5.4v13.2M9 19.5h1.6c.6 0 1.1-.25 1.4-.7.3.45.8.7 1.4.7H15M10.3 12h3.4' fill='none' stroke='${fill}' stroke-width='1.4' stroke-linecap='round'/>`);
+  // a pointing hand for buttons and links
+  const hand = svg(`${shadow}<path filter='url(#s)' d='M9.2 3.6c.9 0 1.5.7 1.5 1.5v5.2l.4-.1c.8-.2 1.6.3 1.8 1l.1.3.4-.1c.8-.2 1.6.2 1.8 1l.1.4.3-.1c.8-.1 1.5.4 1.7 1.2l.3 1.6c.3 1.8-.1 3.6-1.1 5.1l-.4.6c-.3.4-.7.6-1.2.6H10c-.5 0-.9-.2-1.2-.5L5.2 17c-.6-.7-.6-1.7 0-2.3.6-.6 1.6-.6 2.2 0l.3.3V5.1c0-.8.7-1.5 1.5-1.5Z' fill='${fill}' stroke='${edge}' stroke-width='1.3' stroke-linejoin='round'/>`);
+  return { arrow: `${arrow} 5 3, default`, beam: `${beam} 12 12, text`, hand: `${hand} 9 4, pointer` };
+}
+function applyCursor(kind: 'system' | 'black' | 'white') {
+  const r = document.documentElement;
+  if (kind === 'system') { r.removeAttribute('data-cursor'); ['--cur-default', '--cur-text', '--cur-pointer'].forEach((v) => r.style.removeProperty(v)); return; }
+  const c = kind === 'black' ? cursorSet('#111', '#fff') : cursorSet('#fff', '#111');
+  r.setAttribute('data-cursor', kind);
+  r.style.setProperty('--cur-default', c.arrow);
+  r.style.setProperty('--cur-text', c.beam);
+  r.style.setProperty('--cur-pointer', c.hand);
 }
