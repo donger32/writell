@@ -63,15 +63,21 @@ function TaskRow({ t, opts }: { t: Entity; opts: NonNullable<ReturnType<typeof u
   const about = String(t.fields.about ?? '');
   const aboutEnt = opts.byId.get(about);
   const aboutCh = opts.chapters.find((c) => c.id === about);
+  const aboutSc = opts.scenes.find((x) => x.id === about);
+  const scenesOf = (chId: string) => opts.scenes.filter((x) => x.chapterId === chId).sort((a, b) => a.order - b.order);
   return (
     <li className={'task-row' + (t.fields.done ? ' is-done' : '')}>
       <input type="checkbox" checked={!!t.fields.done} aria-label={t.fields.done ? 'Mark as not done' : 'Mark as done'} onChange={(e) => set({ done: e.target.checked, doneAt: e.target.checked ? Date.now() : undefined })} />
       <input className="task-text" defaultValue={t.name} key={t.name} aria-label="Task" onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.name) updateEntity(t.id, { name: v }); }} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
       {aboutEnt && <button className="chip task-about" onClick={() => openEntity(aboutEnt)} title="Open">{aboutEnt.name}</button>}
       {aboutCh && <button className="chip task-about" onClick={() => go({ view: 'project', projectId: t.projectId })} title="Chapter">{aboutCh.title}</button>}
-      <select className="task-link" value={about} onChange={(e) => set({ about: e.target.value || undefined })} aria-label="About" title="Link to a chapter or character">
+      {aboutSc && <button className="chip task-about" onClick={() => go({ view: 'write', projectId: t.projectId, sceneId: aboutSc.id })} title="Open scene">{aboutSc.title || 'Untitled scene'}</button>}
+      <select className="task-link" value={about} onChange={(e) => set({ about: e.target.value || undefined })} aria-label="About" title="Link to a chapter, scene, character or world entry">
         <option value="">Link…</option>
-        <optgroup label="Chapters">{opts.chapters.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}</optgroup>
+        <optgroup label="Chapters & scenes">{opts.chapters.map((c) => [
+          <option key={c.id} value={c.id}>{c.title}</option>,
+          ...scenesOf(c.id).map((x) => <option key={x.id} value={x.id}>{'\u00a0\u00a0\u00a0\u00a0· ' + (x.title || 'Untitled scene')}</option>),
+        ])}</optgroup>
         <optgroup label="Characters">{opts.characterOpts.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</optgroup>
         <optgroup label="World">{opts.worldOpts.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</optgroup>
       </select>

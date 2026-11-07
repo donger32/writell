@@ -2,6 +2,17 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.17.0 — bigger maps, your own types, timeline 30000 BC – 30000
+No database changes.
+- **Maps:** five sizes up to Giant (a whole world), and any map can be made bigger later from Land & water. New maps start low-poly. The height slider goes much higher. Place houses, cottages, towers, castles, tents, wells, walls, bridges, trees, pines, rocks and flags (B), then select (E) to move, turn (, and .), resize, recolor, copy or remove them; they show in 2D too. Big maps only redraw the part you're painting.
+- **Worldbuilding and notes:** pick a type from a list you can search, add your own, and remove the ones you don't use (with an X and a confirmation). Notes, worldbuilding and character pages use the whole width on big screens.
+- **Tasks** can point at a single scene. **Chapters** can be pinned to the sidebar and get any color (20 ready-made plus a color picker).
+- **Relation map:** the relationship types moved into a Types button, like the timeline's Filter.
+- **Timeline:** always spans 30000 BC to 30000, the ruler labels no longer run into each other, and zooming in still shows months and days.
+- **Search** is grouped (scenes, chapters, characters, places, notes, maps & more), says where each match is, and no longer shows stored map or picture data.
+- Friends, Trash and Admin keep your project open in the sidebar; Home and All projects go back to the menu.
+- Smaller cursors, a hidden email in the account panel, a clearer About & privacy, and the interface scale no longer throws off dragging on the timeline, the 2D map, or the relation map and trees.
+
 ## Changes in v0.16.2
 - New mouse cursors: a clean rounded dart (Black, White, or the new see-through Outline) with a slim text cursor; the buttons in Settings show what each looks like.
 - Long windows (like editing a person or a role in Admin) now scroll inside instead of running off the screen.

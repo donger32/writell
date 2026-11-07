@@ -28,6 +28,9 @@ export interface Project {
   checklistTemplate?: string[]; // default editing checklist for chapters
   exportOptions?: Record<string, unknown>;
   relTypes?: { id: string; label: string; color: string }[]; // custom relationship types
+  /** the project's own lists of worldbuilding and note types (empty = the defaults) */
+  worldTypes?: { name: string; group: string }[];
+  noteTypes?: string[];
   author?: string;
   /** which character fields new / un-customised characters show (layout id or a list of field keys) */
   charLayout?: string | string[];

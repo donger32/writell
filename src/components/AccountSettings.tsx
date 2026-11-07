@@ -133,7 +133,7 @@ function SignedIn() {
     <div className="col gap">
       <h3>Account &amp; sync</h3>
       <div className="acct-card">
-        <div className="row gap-s"><Cloud size={16} className="accent" /><strong className="grow ellipsis">{st.email}</strong></div>
+        <div className="row gap-s"><Cloud size={16} className="accent" /><strong className="grow ellipsis" title="Your account">{hideEmail(st.email)}</strong></div>
         <div className={'acct-status ' + st.phase}>
           <span className="dot" /> {PHASE_LABEL[st.phase]}
           {st.phase === 'synced' && st.lastSync ? <span className="muted"> · {timeAgo(st.lastSync)}</span> : null}
@@ -187,4 +187,13 @@ export function SyncBadge({ onOpen, iconOnly }: { onOpen: () => void; iconOnly?:
       {st.phase !== 'signed-out' && <span className="sync-dot" />}
     </button>
   );
+}
+
+/** a.long.name@gmail.com → a••••••e@gmail.com, so the email isn't on screen in full */
+function hideEmail(email?: string | null) {
+  if (!email) return '';
+  const [name, domain] = email.split('@');
+  if (!domain) return email;
+  const shown = name.length <= 2 ? name[0] + '•' : name[0] + '•'.repeat(Math.min(6, name.length - 2)) + name[name.length - 1];
+  return `${shown}@${domain}`;
 }

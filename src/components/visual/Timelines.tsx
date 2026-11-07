@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Layers, Plus, Minus, X, X as XIcon, Trash2, CalendarCog, List, GanttChart, HelpCircle, Pencil, FileText, ExternalLink, CalendarDays, User, MapPin, StickyNote, HeartHandshake, BookOpen, Map as MapIcon, MoreHorizontal, SlidersHorizontal, Filter } from 'lucide-react';
 import { db, type Entity, type Link, type Scene } from '../../db';
 import { addLink, colorOf, createEntity, deleteEntity, removeLink, updateEntity } from '../../entities';
@@ -7,9 +7,10 @@ import { toastTrashed } from '../TrashView';
 import {
   EVENT_CATEGORIES, GREGORIAN, calendarOf, categoryColor, createEvent, dateValue, ensureTimeline, fmtDate, valueToDate, relType,
   type Calendar, type FDate, type RelHistory,
+  yearLabel,
 } from '../../story3';
 import { go } from '../../nav';
-import { Modal, confirmDialog, openMenu, promptDialog, toast } from '../ui';
+import { Modal, confirmDialog, openMenu, promptDialog, toast, uiZoom } from '../ui';
 import { Avatar, Field, ImageBox, Picker, PopButton, useProjectOptions } from '../story/common';
 import { openEntity } from '../story/links';
 import { birthYearOf, deathYearOf, lifespan, withYear, yearFrom } from '../../charDates';
@@ -147,6 +148,10 @@ async function addSubjectEntry(projectId: string, timelineId: string, kind: Subj
 
 const ZOOMS = [{ id: 'millennia', label: 'Millennia', px: 0.12 }, { id: 'centuries', label: 'Centuries', px: 1.1 }, { id: 'decades', label: 'Decades', px: 9 }, { id: 'years', label: 'Years', px: 70 }, { id: 'months', label: 'Months', px: 700 }, { id: 'days', label: 'Days', px: 9000 }];
 const MIN_PX = 0.02, MAX_PX = 20000;
+/** every timeline covers at least this much, so you can scroll anywhere without making room first */
+const FULL_FROM = -30000, FULL_TO = 30000;
+/** the scrolling area is never wider than this; when zoomed in far, it follows you as you scroll */
+const MAX_W = 6_000_000;
 type Density = 'cards' | 'compact' | 'fit';
 const DENSITY_KEY = 'inkwell.timelineDensity';
 const labelWidth = (t: string) => Math.min(260, t.length * 6.6 + 34);
@@ -174,6 +179,12 @@ function WorldTimeline({ projectId, timeline, data, opts, sel, setSel }: { proje
     ro.observe(el); return () => ro.disconnect();
   }, []);
   const [drag, setDrag] = useState<{ id: string; x0: number; v0: number; dx: number } | null>(null);
+  // what's in the middle of the screen: `winCenter` places the scrolling area when zoomed in far,
+  // `viewC` (updated while scrolling) decides which ruler marks to draw, `anchor` re-centers after zooming
+  const [winCenter, setWinCenter] = useState<number | null>(null);
+  const [viewC, setViewC] = useState<number | null>(null);
+  const anchor = useRef<number | 'fit' | null>('fit');
+  const scrollRaf = useRef(0);
 
   const involves = (evId: string, entId: string) => data.links.some((l) => l.relation === 'involves' && l.fromId === evId && l.toId === entId);
   const lives = lifeEntries(opts, timeline.id, data.timelines[0].id, new Set(data.timelines.map((t) => t.id))).filter((e) => !who || e.id === 'life:' + who).filter(() => !where);
@@ -192,14 +203,47 @@ function WorldTimeline({ projectId, timeline, data, opts, sel, setSel }: { proje
   const undated = data.events.filter((e) => e.fields.timelineId === timeline.id && !Number.isFinite(dateValue(e.fields.start as FDate, cal)));
 
   const spanned = [...events, ...eras];
-  const vmin = spanned.length ? Math.floor(Math.min(...spanned.map((x) => x.v))) - 1 : new Date().getFullYear() - 5;
-  const vmax = spanned.length ? Math.ceil(Math.max(...spanned.map((x) => (Number.isFinite(x.end) ? x.end : x.v)))) + 1 : vmin + 10;
+  const evMin = spanned.length ? Math.floor(Math.min(...spanned.map((x) => x.v))) - 1 : new Date().getFullYear() - 5;
+  const evMax = spanned.length ? Math.ceil(Math.max(...spanned.map((x) => (Number.isFinite(x.end) ? x.end : x.v)))) + 1 : evMin + 10;
+  const fitC = (evMin + evMax) / 2;
   const PAD = 80;
-  // default zoom: fit the whole history in view
-  const px = pxUser ?? Math.max(MIN_PX, Math.min(9000, (boxW - 2 * PAD - (density === 'cards' ? CARD : 120)) / Math.max(1, vmax - vmin)));
+  // "Fit": everything that's on the timeline in view
+  const fitPx = Math.max(MIN_PX, Math.min(9000, (boxW - 2 * PAD - (density === 'cards' ? CARD : 120)) / Math.max(1, evMax - evMin)));
+  const px = pxUser ?? fitPx;
+  // the whole range (30000 BC – 30000, or more if things are further out), or a big slice of it around where you are
+  const fullMin = Math.min(FULL_FROM, evMin - 10), fullMax = Math.max(FULL_TO, evMax + 10);
+  let vmin = fullMin, vmax = fullMax;
+  if ((fullMax - fullMin) * px > MAX_W) {
+    const span = MAX_W / px;
+    vmin = Math.min(Math.max((winCenter ?? fitC) - span / 2, fullMin), fullMax - span);
+    vmax = vmin + span;
+  }
   const X = (v: number) => PAD + (v - vmin) * px;
   const width = X(vmax) + PAD;
-  const precision = px < 150 ? 'year' : px < 3000 ? 'month' : 'day';
+  const centerNow = () => { const el = scroller.current; return el ? vmin + (el.scrollLeft + el.clientWidth / 2 - PAD) / px : viewC ?? fitC; };
+  // when "Fit" is on and the size changes, keep everything in view
+  const lastFit = useRef(fitPx);
+  if (pxUser === null && Math.abs(lastFit.current - fitPx) > 1e-9) { lastFit.current = fitPx; anchor.current = 'fit'; }
+  useLayoutEffect(() => {
+    const el = scroller.current; const a = anchor.current;
+    if (!el || a === null) return;
+    anchor.current = null;
+    const c = a === 'fit' ? fitC : a;
+    el.scrollLeft = Math.max(0, X(c) - el.clientWidth / 2);
+    setViewC(c);
+  });
+  const onScroll = () => {
+    cancelAnimationFrame(scrollRaf.current);
+    scrollRaf.current = requestAnimationFrame(() => {
+      const el = scroller.current; if (!el) return;
+      const c = centerNow();
+      setViewC(c);
+      // zoomed in far: move the scrolling area along before you reach its end
+      const windowed = (fullMax - fullMin) * px > MAX_W;
+      if (windowed && (el.scrollLeft < el.clientWidth || el.scrollLeft > width - 2 * el.clientWidth)) { setWinCenter(c); anchor.current = c; }
+    });
+  };
+  const precision = px < 120 ? 'year' : px < 3000 ? 'month' : 'day';
 
   // lanes so cards don't overlap (optionally one band per kind: events, characters, places…)
   const GROUP_GAP = density === 'cards' ? 26 : 20;
@@ -244,19 +288,28 @@ function WorldTimeline({ projectId, timeline, data, opts, sel, setSel }: { proje
   const ERA_H = eras.length ? 22 : 0;
   const topOf = (lane: number, group: number) => 40 + ERA_H + lane * ROW + (grouped ? (group + 1) * GROUP_GAP : 0);
 
-  // axis ticks
+  // ruler marks, only around what's on screen, spaced so the labels never run into each other
   const ticks: { x: number; label: string; major: boolean }[] = [];
-  if (px < 150) {
-    // pick a step so labels stay ~70px apart: 1, 2, 5, 10, 20, 50, 100 … years
+  const seen = viewC ?? fitC;
+  const half = (1.5 * boxW) / px;
+  const t0 = Math.max(vmin, seen - half), t1 = Math.min(vmax, seen + half);
+  const nMonths = Math.max(1, cal.months.length);
+  const monthPx = px / nMonths;
+  const mStep = [1, 2, 3, 4, 6].find((k) => k * monthPx >= 58 && nMonths % k === 0);
+  if (!mStep) {
+    // years: 1, 2, 5, 10, 20, 50, 100 … so labels stay ~80px apart
     const steps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000];
-    const step = steps.find((st) => st * px >= 70) ?? 100000;
-    for (let y = Math.ceil(vmin / step) * step; y <= vmax; y += step) ticks.push({ x: X(y), label: `${y}`, major: y % (step * 5) === 0 });
+    const step = steps.find((st) => st * px >= 80) ?? 100000;
+    for (let y = Math.ceil(t0 / step) * step; y <= t1; y += step) ticks.push({ x: X(y), label: yearLabel(y, { ...cal, era: '' }), major: y % (step * 5) === 0 });
+  } else {
+    const daysPerYear = cal.months.reduce((a, m) => a + m.days, 0) || 365;
+    const dayStep = [1, 2, 5, 10].find((k) => (k * px) / daysPerYear >= 34);
+    for (let y = Math.floor(t0); y <= Math.ceil(t1); y++) cal.months.forEach((m, i) => {
+      const v = dateValue({ y, m: i + 1 }, cal);
+      if (v >= t0 && v <= t1 && i % mStep === 0) ticks.push({ x: X(v), label: i === 0 || monthPx >= 120 ? `${m.name.slice(0, 3)} ${yearLabel(y, { ...cal, era: '' })}` : m.name.slice(0, 3), major: i === 0 });
+      if (dayStep && mStep === 1) for (let d = 1 + dayStep; d <= m.days; d += dayStep) { const dv = dateValue({ y, m: i + 1, d }, cal); if (dv >= t0 && dv <= t1) ticks.push({ x: X(dv), label: `${d}`, major: false }); }
+    });
   }
-  else for (let y = vmin; y <= vmax; y++) cal.months.forEach((m, i) => {
-    const v = dateValue({ y, m: i + 1 }, cal);
-    if (v <= vmax) ticks.push({ x: X(v), label: i === 0 ? `${m.name.slice(0, 3)} ${y}` : m.name.slice(0, 3), major: i === 0 });
-    if (px >= 3000) for (let d = 5; d <= m.days; d += 5) { const dv = dateValue({ y, m: i + 1, d }, cal); if (dv <= vmax) ticks.push({ x: X(dv), label: `${d}`, major: false }); }
-  });
 
   const addEvent = async (at?: FDate) => {
     const name = await promptDialog(at ? `New event in ${fmtDate(at, cal)}` : 'New event', '', 'Add');
@@ -278,7 +331,7 @@ function WorldTimeline({ projectId, timeline, data, opts, sel, setSel }: { proje
     const t = ev.target as HTMLElement;
     if (t.closest('.tl-row-item, .tl-card, .tl-era-label')) return;
     const box = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-    const v = vmin + (ev.clientX - box.left - PAD) / px;
+    const v = vmin + ((ev.clientX - box.left) / uiZoom() - PAD) / px;
     addEvent(valueToDate(v, cal, precision));
   };
 
@@ -293,7 +346,9 @@ function WorldTimeline({ projectId, timeline, data, opts, sel, setSel }: { proje
     } }] : []),
   ]);
   const nearestZoom = ZOOMS.reduce((best, z) => (Math.abs(Math.log(px / z.px)) < Math.abs(Math.log(px / best.px)) ? z : best), ZOOMS[0]);
-  const zoomBy = (f: number) => setPx(Math.max(MIN_PX, Math.min(MAX_PX, px * f)));
+  // zooming keeps what's in the middle of the screen in the middle
+  const zoomTo = (np: number | null) => { const c = centerNow(); setPx(np === null ? null : Math.max(MIN_PX, Math.min(MAX_PX, np))); if (np === null) { setWinCenter(null); anchor.current = 'fit'; } else { setWinCenter(c); anchor.current = c; } };
+  const zoomBy = (f: number) => zoomTo(px * f);
   const filterCount = hiddenKinds.size + cats.size + (who ? 1 : 0) + (where ? 1 : 0);
   const clearFilters = () => { setHiddenKinds(new Set()); setCats(new Set()); setWho(''); setWhere(''); };
 
@@ -313,12 +368,12 @@ function WorldTimeline({ projectId, timeline, data, opts, sel, setSel }: { proje
       <div className="tl-bar">
         <div className="zoom-ctl" role="group" aria-label="Zoom">
           <button className="icon-btn sm" title="Zoom out" aria-label="Zoom out" onClick={() => zoomBy(1 / 2.5)}><Minus size={14} /></button>
-          <button className={'btn ghost sm' + (pxUser === null ? ' on-text' : '')} onClick={() => setPx(null)} title="Fit everything in view">Fit</button>
+          <button className={'btn ghost sm' + (pxUser === null ? ' on-text' : '')} onClick={() => zoomTo(null)} title="Fit everything in view">Fit</button>
           <button className="icon-btn sm" title="Zoom in" aria-label="Zoom in" onClick={() => zoomBy(2.5)}><Plus size={14} /></button>
         </div>
         <PopButton icon={<SlidersHorizontal size={13} />} label="View">
           <div className="pop-label">Scale</div>
-          <select className="zoom-select" value={nearestZoom.id} onChange={(e) => setPx(ZOOMS.find((z) => z.id === e.target.value)!.px)} aria-label="Scale">
+          <select className="zoom-select" value={nearestZoom.id} onChange={(e) => zoomTo(ZOOMS.find((z) => z.id === e.target.value)!.px)} aria-label="Scale">
             {ZOOMS.map((z) => <option key={z.id} value={z.id}>{z.label}</option>)}
           </select>
           <div className="pop-label">Layout</div>
@@ -361,8 +416,8 @@ function WorldTimeline({ projectId, timeline, data, opts, sel, setSel }: { proje
       </div>
 
       {mode === 'chart' ? (
-        <div className={'tl-scroll d-' + density} ref={scroller} onDragStart={(e) => e.preventDefault()}
-          onPointerMove={(e) => drag && setDrag({ ...drag, dx: e.clientX - drag.x0 })}
+        <div className={'tl-scroll d-' + density} ref={scroller} onScroll={onScroll} onDragStart={(e) => e.preventDefault()}
+          onPointerMove={(e) => drag && setDrag({ ...drag, dx: (e.clientX - drag.x0) / uiZoom() })}
           onPointerUp={async () => {
             if (!drag) return;
             if (Math.abs(drag.dx) > 3 && drag.id.startsWith('life:')) {

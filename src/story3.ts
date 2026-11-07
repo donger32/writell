@@ -36,13 +36,19 @@ export function valueToDate(v: number, c: Calendar, precision: 'year' | 'month' 
   return precision === 'month' ? { y, m: m + 1 } : { y, m: m + 1, d: Math.min(doy + 1, c.months[m].days) };
 }
 
+/** 1350 → "1350", -500 → "500 BC" (with a fictional era: "-500 AR") */
+export function yearLabel(y: number, c: Calendar): string {
+  const custom = c.era && !/^(AD|CE)$/i.test(c.era.trim());
+  if (y < 0 && !custom) return `${-y} BC`;
+  return `${y}${c.era ? ` ${c.era}` : ''}`;
+}
 export function fmtDate(d: FDate | undefined, c: Calendar): string {
   if (!d || !Number.isFinite(d.y)) return '';
-  const era = c.era ? ` ${c.era}` : '';
   const mn = d.m ? c.months[d.m - 1]?.name ?? `Month ${d.m}` : '';
-  if (d.m && d.d) return `${d.d} ${mn} ${d.y}${era}`;
-  if (d.m) return `${mn} ${d.y}${era}`;
-  return `${d.y}${era}`;
+  const y = yearLabel(d.y, c);
+  if (d.m && d.d) return `${d.d} ${mn} ${y}`;
+  if (d.m) return `${mn} ${y}`;
+  return y;
 }
 
 /* =====================================================================

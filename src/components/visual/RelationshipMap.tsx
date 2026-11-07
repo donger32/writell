@@ -8,7 +8,7 @@ import { db, uid, type Entity, type Link } from '../../db';
 import { addLink, colorOf, createEntity, removeLink, updateEntity, updateLinkData, sideLabel, sideKey } from '../../entities';
 import { allRelTypes, relType, currentRelType, saveDiagramPositions, type Pos, type RelHistory, type RelTypeDef } from '../../story3';
 import { Modal, openMenu, toast } from '../ui';
-import { Palette } from 'lucide-react';
+import { Palette, Filter } from 'lucide-react';
 import { Avatar, Picker, PopButton, useProjectOptions } from '../story/common';
 import { openEntity } from '../story/links';
 import { TimelineBox } from './TimelineBox';
@@ -318,19 +318,24 @@ export function RelationshipMapView({ projectId }: { projectId: string }) {
           { label: 'Circle', hint: 'Everyone in a ring', icon: <Circle size={14} />, onClick: () => arrange('circle') },
           { label: 'Grid, A–Z', hint: 'Tidy rows in name order', icon: <Grid3x3 size={14} />, onClick: () => arrange('grid') },
         ])}><Wand2 size={13} /> Arrange</button>
+        <PopButton icon={<Filter size={13} />} label="Types" badge={hidden.size || undefined} wide>
+          <div className="row gap-s"><span className="pop-label grow">Show these relationships</span>
+            <button className="link small" onClick={() => setHidden(new Set())}>All</button><span className="muted small">·</span>
+            <button className="link small" onClick={() => setHidden(new Set(TYPES.map((t) => t.id)))}>None</button></div>
+          <div className="type-filter">
+            {TYPES.map((t) => (
+              <button key={t.id} className={'chip' + (!hidden.has(t.id) ? ' on' : '')} title={t.label} onClick={() => setHidden((s) => { const n = new Set(s); if (n.has(t.id)) n.delete(t.id); else n.add(t.id); return n; })}>
+                <span className="dot" style={{ background: t.color }} /> <span className="ellipsis">{t.label}</span>
+              </button>
+            ))}
+          </div>
+          <button className="btn ghost sm" onClick={() => setEditTypes(true)}><Palette size={12} /> Your own types…</button>
+        </PopButton>
         <span className="tb-sep" />
         <button className="btn ghost sm" onClick={() => addNote('box')} title="Draw a box around a group and give it a name"><Square size={13} /> Box</button>
         <button className="btn ghost sm" onClick={() => addNote('text')} title="Write a note anywhere on the map"><Type size={13} /> Text</button>
         <span className="grow" />
         <button className="icon-btn" onClick={() => setBig((b) => !b)} title={big ? 'Back to normal size (Esc)' : 'Use the whole window'} aria-label={big ? 'Exit full window' : 'Use the whole window'}>{big ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</button>
-      </div>
-      <div className="filter-chips legend">
-        {TYPES.map((t) => (
-          <button key={t.id} className={'chip' + (!hidden.has(t.id) ? ' on' : '')} onClick={() => setHidden((s) => { const n = new Set(s); if (n.has(t.id)) n.delete(t.id); else n.add(t.id); return n; })}>
-            <span className="dot" style={{ background: t.color }} /> {t.label}
-          </button>
-        ))}
-        <button className="chip" onClick={() => setEditTypes(true)}><Palette size={11} /> Custom types…</button>
       </div>
       <div className="canvas-wrap">
         <div className="canvas" ref={canvasRef}>
@@ -470,13 +475,13 @@ function RelTypesEditor({ projectId, custom, onClose }: { projectId: string; cus
           {list.map((t, i) => (
             <div key={t.id} className="row gap-s">
               <input type="color" className="swatch-input" value={t.color} onChange={(e) => setList(list.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)))} aria-label={`Color for ${t.label}`} />
-              <input className="input sm grow" value={t.label} onChange={(e) => setList(list.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} aria-label="Type name" />
+              <input className="input sm grow" maxLength={40} value={t.label} onChange={(e) => setList(list.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} aria-label="Type name" />
               <button className="icon-btn sm" title="Delete type (relationships using it become “Other”)" onClick={() => setList(list.filter((_, j) => j !== i))}><X size={12} /></button>
             </div>
           ))}
           {!list.length && <p className="muted small">No custom types yet.</p>}
         </div>
-        <div className="row gap-s"><input className="input sm grow" placeholder="New type, e.g. Sworn enemies" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /><button className="btn sm" onClick={add}><Plus size={13} /> Add</button></div>
+        <div className="row gap-s"><input className="input sm grow" maxLength={40} placeholder="New type, e.g. Sworn enemies" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} /><button className="btn sm" onClick={add}><Plus size={13} /> Add</button></div>
         <div className="row end gap-s"><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" onClick={save}>Save types</button></div>
       </div>
     </Modal>

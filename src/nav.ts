@@ -18,9 +18,10 @@ export type Route =
   | { view: 'maps'; projectId: string; entityId?: string }
   | { view: 'timelines'; projectId: string; tab?: 'world' | 'story' | 'character'; timelineId?: string; characterId?: string; eventId?: string }
   | { view: 'statistics'; scope?: string }
-  | { view: 'trash' }
-  | { view: 'friends' }
-  | { view: 'admin' }
+  // `from`: the project you came from, which stays open in the sidebar
+  | { view: 'trash'; from?: string }
+  | { view: 'friends'; from?: string }
+  | { view: 'admin'; from?: string }
   | { view: 'chat'; projectId: string; focusId?: string }
   | { view: 'tasks'; projectId: string }
   | { view: 'revision'; projectId: string };

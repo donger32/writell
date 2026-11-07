@@ -81,7 +81,7 @@ export interface Settings {
   shortcuts: Record<string, string>;
   startMode: 'writing' | 'editing' | 'focus' | 'typewriter';
   defaultTemplate: string;
-  pins: { projectId: string; kind: 'scene' | 'entity'; id: string }[];
+  pins: { projectId: string; kind: 'scene' | 'entity' | 'chapter'; id: string }[];
 }
 
 export const ALL_TOOLS = ['bold', 'italic', 'underline', 'strike', 'highlight', 'h1', 'h2', 'h3', 'bullet', 'ordered', 'quote', 'link', 'undo', 'redo'] as const;
@@ -193,6 +193,7 @@ export function applySettingsToDOM(s: Settings) {
   r.setProperty('--ed-para', s.paragraphSpacing + 'em');
   r.setProperty('--sidebar-w', s.sidebarWidth + 'px');
   r.setProperty('zoom', String(s.uiScale));
+  r.setProperty('--ui-scale', String(s.uiScale));
   document.documentElement.dataset.mode = t.mode;
   document.documentElement.style.colorScheme = t.mode;
 }
@@ -206,7 +207,7 @@ export function togglePin(p: PinRef) {
 
 /* ---- custom mouse cursor (only inside Writell) ---- */
 export const cursorPreview = (kind: 'black' | 'white' | 'outline') => cursorSet(kind).arrow.split(' ')[0];
-const svg = (body: string) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 32 32'>${body}</svg>`)}")`;
+const svg = (body: string) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='21' height='21' viewBox='0 0 32 32'>${body}</svg>`)}")`;
 // a clean, rounded dart pointing up-left (its tip is the click point)
 const DART = 'M5.5 4.5 26 12.7 16.4 16.4 12.7 26Z';
 // a slim text cursor
@@ -224,7 +225,7 @@ function cursorSet(kind: 'black' | 'white' | 'outline') {
     beam = `${shadow}<path filter='url(#s)' d='${BEAM}' fill='none' stroke='${edge}' stroke-width='4' stroke-linecap='round'/><path d='${BEAM}' fill='none' stroke='${fill}' stroke-width='1.8' stroke-linecap='round'/>`;
   }
   const arrow = svg(dart);
-  return { arrow: `${arrow} 5 4, default`, beam: `${svg(beam)} 14 14, text`, hand: `${arrow} 5 4, pointer` };
+  return { arrow: `${arrow} 4 3, default`, beam: `${svg(beam)} 10 10, text`, hand: `${arrow} 4 3, pointer` };
 }
 function applyCursor(kind: 'system' | 'black' | 'white' | 'outline') {
   const r = document.documentElement;

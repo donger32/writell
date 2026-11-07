@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { renderTopDown, type Pin, type Tool } from '../../mapdata';
+import { objDef, renderTopDown, worldSize, type MapObject, type Pin, type Tool } from '../../mapdata';
+import { uiZoom } from '../ui';
 
 export interface Map2DProps {
   N: number; heights: Float32Array; paint: Uint8Array; sea: number; aspect: number;
   image?: string; useImage: boolean; version: number; tool: Tool; brush: number; pins: Pin[]; selectedPin: string | null;
   onStroke: (cx: number, cy: number, first: boolean) => void; onStrokeEnd: () => void;
   onPlacePin: (u: number, v: number) => void; onSelectPin: (id: string) => void; onMovePin: (id: string, u: number, v: number) => void;
+  objects: MapObject[]; selectedObject: string | null; pendingLine: { u: number; v: number } | null;
+  onPlaceObject: (u: number, v: number) => void; onSelectObject: (id: string | null) => void; onMoveObject: (id: string, du: number, dv: number) => void;
   snapshotRef?: React.MutableRefObject<(() => string) | null>;
 }
 
@@ -17,7 +20,7 @@ export function Map2D(p: Map2DProps) {
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [img, setImg] = useState<HTMLImageElement | null>(null);
-  const drag = useRef<{ mode: 'pan' | 'draw' | 'pin'; x: number; y: number; vx: number; vy: number; pin?: string } | null>(null);
+  const drag = useRef<{ mode: 'pan' | 'draw' | 'pin' | 'obj'; x: number; y: number; vx: number; vy: number; pin?: string; u?: number; v?: number } | null>(null);
   const RES = 1024;
   const H = Math.round(RES / p.aspect);
 
@@ -61,7 +64,7 @@ export function Map2D(p: Map2DProps) {
 
   const onWheel = (e: React.WheelEvent) => {
     const r = wrap.current!.getBoundingClientRect();
-    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    const z = uiZoom(); const mx = (e.clientX - r.left) / z, my = (e.clientY - r.top) / z;
     const k = Math.max(0.4, Math.min(8, view.k * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
     setView({ k, x: mx - ((mx - view.x) * k) / view.k, y: my - ((my - view.y) * k) / view.k });
   };
@@ -77,6 +80,20 @@ export function Map2D(p: Map2DProps) {
         const { u, v } = local(e);
         if (u < 0 || v < 0 || u > 1 || v > 1) return;
         if (p.tool === 'pin') { p.onPlacePin(u, v); return; }
+        if (p.tool === 'object') { p.onPlaceObject(u, v); return; }
+        if (p.tool === 'select') {
+          // the nearest thing within a few pixels
+          const r = board.current!.getBoundingClientRect();
+          let best: string | null = null, bd = 14;
+          for (const o of p.objects) {
+            const cu = o.u2 !== undefined ? (o.u + o.u2) / 2 : o.u, cv = o.v2 !== undefined ? (o.v + (o.v2 ?? o.v)) / 2 : o.v;
+            const d = Math.hypot((cu - u) * r.width, (cv - v) * r.height);
+            if (d < bd) { bd = d; best = o.id; }
+          }
+          p.onSelectObject(best);
+          if (best) drag.current = { mode: 'obj', x: e.clientX, y: e.clientY, vx: 0, vy: 0, pin: best, u, v };
+          return;
+        }
         drag.current = { mode: 'draw', x: 0, y: 0, vx: 0, vy: 0 };
         p.onStroke(u * (p.N - 1), v * (p.N - 1), true);
       }}
@@ -85,16 +102,18 @@ export function Map2D(p: Map2DProps) {
         const { u, v } = local(e);
         setCursor(p.tool !== 'view' && p.tool !== 'pin' && u >= 0 && v >= 0 && u <= 1 && v <= 1 ? { x: u, y: v } : null);
         if (!d) return;
-        if (d.mode === 'pan') setView((s) => ({ ...s, x: d.vx + e.clientX - d.x, y: d.vy + e.clientY - d.y }));
+        if (d.mode === 'pan') { const z = uiZoom(); setView((s) => ({ ...s, x: d.vx + (e.clientX - d.x) / z, y: d.vy + (e.clientY - d.y) / z })); }
         else if (d.mode === 'draw') p.onStroke(u * (p.N - 1), v * (p.N - 1), false);
+        else if (d.mode === 'obj' && d.pin && d.u !== undefined && d.v !== undefined) { p.onMoveObject(d.pin, u - d.u, v - d.v); d.u = u; d.v = v; }
         else if (d.mode === 'pin' && d.pin && (Math.abs(e.clientX - d.x) > 3 || Math.abs(e.clientY - d.y) > 3)) p.onMovePin(d.pin, Math.max(0, Math.min(1, u)), Math.max(0, Math.min(1, v)));
       }}
-      onPointerUp={() => { if (drag.current?.mode === 'draw') p.onStrokeEnd(); drag.current = null; }}
+      onPointerUp={() => { if (drag.current?.mode === 'draw' || drag.current?.mode === 'obj') p.onStrokeEnd(); drag.current = null; }}
       onPointerLeave={() => setCursor(null)}
-      style={{ cursor: p.tool === 'view' ? 'grab' : p.tool === 'pin' ? 'crosshair' : 'none' }}>
+      style={{ cursor: p.tool === 'view' ? 'grab' : p.tool === 'pin' || p.tool === 'object' ? 'crosshair' : p.tool === 'select' ? 'pointer' : 'none' }}>
       <div className="map2d-stage" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
         <div className="map2d-board" ref={board} style={{ aspectRatio: String(p.aspect), ['--a' as string]: String(p.aspect) }}>
           <canvas ref={canvas} width={RES} height={H} />
+          <Things2D objects={p.objects} selected={p.selectedObject} pending={p.pendingLine} N={p.N} aspect={p.aspect} />
           {cursor && <div className="map2d-brush" style={{ left: `${cursor.x * 100}%`, top: `${cursor.y * 100}%`, width: `${(p.brush * 2 / (p.N - 1)) * 100}%`, aspectRatio: String(1 / p.aspect) }} />}
           {p.pins.map((pin) => (
             <button key={pin.id} data-pin={pin.id} className={'map2d-pin' + (pin.id === p.selectedPin ? ' on' : '')} style={{ left: `${pin.u * 100}%`, top: `${pin.v * 100}%`, ['--pin' as string]: pin.color, transform: `translate(-50%, -100%) scale(${1 / view.k})` }}>
@@ -105,5 +124,28 @@ export function Map2D(p: Map2DProps) {
       </div>
       <button className="btn sm map2d-reset" onClick={() => setView({ x: 0, y: 0, k: 1 })}>Reset view</button>
     </div>
+  );
+}
+
+/** Placed things seen from above, at their real size */
+function Things2D({ objects, selected, pending, N, aspect }: { objects: MapObject[]; selected: string | null; pending: { u: number; v: number } | null; N: number; aspect: number }) {
+  const VW = 1000, VH = 1000 / aspect;
+  const unit = VW / (worldSize(N) * aspect); // svg units per 3D unit
+  const sz = (x: number) => Math.max(3, x * unit);
+  return (
+    <svg className="map2d-things" viewBox={`0 0 ${VW} ${VH}`} preserveAspectRatio="none" aria-hidden="true">
+      {objects.map((o) => {
+        const c = o.color ?? objDef(o.kind).color, on = o.id === selected;
+        const x = o.u * VW, y = o.v * VH, k = o.scale;
+        const stroke = on ? '#8b7cf6' : 'rgba(0,0,0,.55)', sw = on ? 2.5 : 1;
+        if (o.u2 !== undefined) return <line key={o.id} x1={x} y1={y} x2={o.u2 * VW} y2={(o.v2 ?? o.v) * VH} stroke={on ? '#8b7cf6' : c} strokeWidth={sz(o.kind === 'bridge' ? 1.4 : 0.6) * k} strokeLinecap="round" />;
+        const rot = (-o.rot * 180) / Math.PI;
+        if (o.kind === 'tree' || o.kind === 'pine' || o.kind === 'rock' || o.kind === 'well' || o.kind === 'tower' || o.kind === 'tent' || o.kind === 'flag')
+          return <circle key={o.id} cx={x} cy={y} r={sz(o.kind === 'tower' ? 1 : o.kind === 'tent' ? 1.1 : o.kind === 'flag' ? 0.5 : 0.85) * k} fill={c} stroke={stroke} strokeWidth={sw} />;
+        const w = (o.kind === 'castle' ? 5.2 : o.kind === 'cottage' ? 1.6 : 2.4), d = (o.kind === 'castle' ? 5.2 : o.kind === 'cottage' ? 1.4 : 2);
+        return <rect key={o.id} x={x - (sz(w) * k) / 2} y={y - (sz(d) * k) / 2} width={sz(w) * k} height={sz(d) * k} fill={c} stroke={stroke} strokeWidth={sw} transform={`rotate(${rot} ${x} ${y})`} />;
+      })}
+      {pending && <circle cx={pending.u * VW} cy={pending.v * VH} r={6} fill="none" stroke="#8b7cf6" strokeWidth={2.5} />}
+    </svg>
   );
 }

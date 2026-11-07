@@ -90,6 +90,10 @@ export function rowKeys(onActivate: () => void, onMenu?: (el: HTMLElement) => vo
   };
 }
 
+/** the interface scale (CSS zoom on the page). Mouse positions and getBoundingClientRect are in screen pixels;
+ *  divide by this before using them as CSS pixels inside the page */
+export const uiZoom = () => parseFloat(getComputedStyle(document.documentElement).zoom || '1') || 1;
+
 let menuReturnFocus: HTMLElement | null = null;
 export function MenuHost() {
   const m = useSyncExternalStore((l) => { ml.add(l); return () => ml.delete(l); }, () => menu);
@@ -116,9 +120,9 @@ export function MenuHost() {
       window.addEventListener('keydown', close);
     }, 0);
     const r = ref.current?.getBoundingClientRect();
-    const zoom = parseFloat(getComputedStyle(document.documentElement).zoom || '1') || 1;
+    const zoom = uiZoom();
     const x = m.x / zoom, y = m.y / zoom;
-    setPos({ x: r ? Math.min(x, window.innerWidth / zoom - r.width - 8) : x, y: r ? Math.min(y, window.innerHeight / zoom - r.height - 8) : y });
+    setPos({ x: r ? Math.max(4, Math.min(x, (window.innerWidth - r.width) / zoom - 8)) : x, y: r ? Math.max(4, Math.min(y, (window.innerHeight - r.height) / zoom - 8)) : y });
     return () => { clearTimeout(t); window.removeEventListener('mousedown', close); window.removeEventListener('blur', close); window.removeEventListener('keydown', close); };
   }, [m]);
   if (!m) return null;
@@ -166,3 +170,8 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
 export const STATUS_LABEL = { idea: 'Idea', draft: 'Draft', revising: 'Revising', done: 'Done' } as const;
 export const STATUS_COLOR = { idea: '#8b8d98', draft: '#e8b14a', revising: '#5fa8f5', done: '#5fbf8f' } as const;
 export const CHAPTER_COLORS = ['', '#e06c75', '#e8925a', '#e8c547', '#5fbf8f', '#5fa8f5', '#8b7cf6', '#d17ad8'];
+/** the bigger palette in the chapter color picker */
+export const COLOR_PALETTE = [
+  '#e06c75', '#f0506e', '#e8925a', '#f2a541', '#e8c547', '#c9d64a', '#8bc34a', '#5fbf8f', '#2bb3a3', '#4fc1e9',
+  '#5fa8f5', '#4a7ce8', '#8b7cf6', '#a66cff', '#d17ad8', '#f472b6', '#b5876b', '#8d6e63', '#9aa0aa', '#5d6470',
+];

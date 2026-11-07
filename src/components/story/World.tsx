@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Star, MoreHorizontal, Copy, Trash2, Plus, Download } from 'lucide-react';
 import { db, type Entity } from '../../db';
-import { WORLD_CATEGORIES, PLACE_CATEGORIES, createEntity, deleteEntity, duplicateEntity, updateEntity, worldSections, parentOf, setParent, ancestors, isInside, childCategory } from '../../entities';
+import { WORLD_CATEGORIES, PLACE_CATEGORIES, CUSTOM_GROUP, worldTypesOf, setWorldTypes, createEntity, deleteEntity, duplicateEntity, updateEntity, worldSections, parentOf, setParent, ancestors, isInside, childCategory } from '../../entities';
 import { toastTrashed } from '../TrashView';
 import { ChevronRight, X } from 'lucide-react';
 import { Picker } from './common';
@@ -13,23 +13,24 @@ import { EntityShell, SideBox } from './EntityShell';
 import { NotesAbout, RelatedEntities, SceneLinks } from './links';
 import { exportEntityMarkdown } from '../../exporting';
 import { TimelineBox } from '../visual/TimelineBox';
-
-const GROUPS = [...new Set(WORLD_CATEGORIES.map((c) => c.group))];
+import { TypePicker } from './TypePicker';
 
 export function WorldView({ projectId, entityId, category }: { projectId: string; entityId?: string; category?: string }) {
   const items = useLiveQuery(() => db.entities.where('[projectId+kind]').equals([projectId, 'world']).toArray(), [projectId]);
   const opts = useProjectOptions(projectId);
+  const project = useLiveQuery(() => db.projects.get(projectId), [projectId]);
   const [filter, setFilter] = useState<string>(category ?? 'All');
   if (!items || !opts) return null;
   const active = items.find((e) => e.id === entityId);
-  const customCats = [...new Set(items.map((e) => String(e.fields.category ?? '')).filter((c) => c && !WORLD_CATEGORIES.some((w) => w.name === c)))];
+  const types = worldTypesOf(project, items.map((e) => String(e.fields.category ?? '')));
   const usedCats = [...new Set(items.map((e) => String(e.fields.category ?? '')))].filter(Boolean).sort();
   const shown = filter === 'All' ? items : filter === 'Places' ? items.filter((e) => PLACE_CATEGORIES.has(String(e.fields.category))) : items.filter((e) => e.fields.category === filter);
 
   const create = async () => {
     const name = await promptDialog('New worldbuilding entry', '', 'Create');
     if (!name) return;
-    const cat = filter !== 'All' && filter !== 'Places' ? filter : filter === 'Places' ? 'Location' : 'Location';
+    const first = types.find((t) => t.name === 'Location') ?? types[0];
+    const cat = filter !== 'All' && filter !== 'Places' ? filter : first?.name ?? 'Location';
     const id = await createEntity(projectId, 'world', name, { category: cat });
     go({ view: 'world', projectId, entityId: id });
   };
@@ -43,12 +44,12 @@ export function WorldView({ projectId, entityId, category }: { projectId: string
         </div>
       }
       empty={<><h3>Your world</h3><p className="muted">Places, factions, religions, magic systems, species, languages, artifacts… Each entry can link to characters, scenes and other entries.</p><button className="btn primary" onClick={create}><Plus size={14} /> New entry</button></>}>
-      {active && <WorldEntry key={active.id} e={active} opts={opts} customCats={customCats} all={items} />}
+      {active && <WorldEntry key={active.id} e={active} opts={opts} types={types} all={items} />}
     </EntityShell>
   );
 }
 
-function WorldEntry({ e, opts, customCats, all }: { e: Entity; opts: NonNullable<ReturnType<typeof useProjectOptions>>; customCats: string[]; all: Entity[] }) {
+function WorldEntry({ e, opts, types, all }: { e: Entity; opts: NonNullable<ReturnType<typeof useProjectOptions>>; types: { name: string; group: string }[]; all: Entity[] }) {
   const byId = new Map(all.map((x) => [x.id, x]));
   const chain = ancestors(e, byId).reverse();
   const children = all.filter((x) => parentOf(x) === e.id).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
@@ -84,16 +85,13 @@ function WorldEntry({ e, opts, customCats, all }: { e: Entity; opts: NonNullable
               <button className="icon-btn" onClick={menu} title="More actions" aria-label="More actions"><MoreHorizontal size={16} /></button>
             </div>
             <div className="row gap-s wrap">
-              <select className="pill-select" value={cat} onChange={async (ev) => {
-                let v = ev.target.value;
-                if (v === '__new') { const n = await promptDialog('New category', '', 'Create'); if (!n) return; v = n; }
-                set('category', v);
-              }}>
-                {GROUPS.map((g) => <optgroup key={g} label={g}>{WORLD_CATEGORIES.filter((c) => c.group === g).map((c) => <option key={c.name}>{c.name}</option>)}</optgroup>)}
-                {customCats.length > 0 && <optgroup label="Your categories">{customCats.map((c) => <option key={c}>{c}</option>)}</optgroup>}
-                {!WORLD_CATEGORIES.some((c) => c.name === cat) && !customCats.includes(cat) && <option>{cat}</option>}
-                <option value="__new">+ New category…</option>
-              </select>
+              <TypePicker value={cat} types={types} what="type"
+                countOf={(n) => all.filter((x) => x.fields.category === n).length}
+                onPick={(n) => set('category', n)}
+                onAdd={(n) => void setWorldTypes(e.projectId, [...types, { name: n, group: CUSTOM_GROUP }])}
+                onRemove={(n) => void setWorldTypes(e.projectId, types.filter((t) => t.name !== n))}
+                onReset={types.length === WORLD_CATEGORIES.length && WORLD_CATEGORIES.every((w) => types.some((t) => t.name === w.name)) ? undefined
+                  : () => void setWorldTypes(e.projectId, [...WORLD_CATEGORIES, ...types.filter((t) => !WORLD_CATEGORIES.some((w) => w.name === t.name))])} />
             </div>
             <TagEditor tags={e.tags} suggestions={opts.allTags} onChange={(tags) => updateEntity(e.id, { tags })} />
           </div>

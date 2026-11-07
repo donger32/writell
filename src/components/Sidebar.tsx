@@ -18,7 +18,7 @@ import { deleteChapter, deleteScene } from '../trash';
 import { toastTrashed } from './TrashView';
 import { go, openProject, setNav, useNav, getRecentScenes, getRecentEntities } from '../nav';
 import { setSettings, useSettings, togglePin, isPinned } from '../settings';
-import { confirmDialog, openMenu, promptDialog, rowKeys, STATUS_COLOR, CHAPTER_COLORS } from './ui';
+import { confirmDialog, openMenu, promptDialog, rowKeys, STATUS_COLOR, COLOR_PALETTE, Modal } from './ui';
 import { fmtNum } from '../util';
 
 const COLLAPSE_KEY = 'inkwell.sidebar.sections';
@@ -35,7 +35,7 @@ function WsBtn({ label, icon: I, active, onClick, dot }: { label: string; icon: 
 export function Sidebar() {
   const s = useSettings();
   const { route } = useNav();
-  const projectId = 'projectId' in route ? route.projectId : route.view === 'statistics' && route.scope ? route.scope : null;
+  const projectId = 'projectId' in route ? route.projectId : route.view === 'statistics' && route.scope ? route.scope : 'from' in route && route.from ? route.from : null;
   const project = useLiveQuery(() => (projectId ? db.projects.get(projectId) : undefined), [projectId]);
   const [collapsed, toggle] = useCollapsed();
   const phone = usePhone();
@@ -86,18 +86,18 @@ export function Sidebar() {
             <WsBtn label="Home" icon={Home} active={route.view === 'home'} onClick={() => go({ view: 'home' })} />
             <WsBtn label="All projects" icon={LayoutGrid} active={route.view === 'projects'} onClick={() => go({ view: 'projects' })} />
             {s.showStats && <WsBtn label="Statistics" icon={BarChart3} active={route.view === 'statistics'} onClick={() => go({ view: 'statistics', scope: project.id })} />}
-            <WsBtn label={social.incoming.length ? `Friends (${social.incoming.length} requests)` : 'Friends'} icon={Users} active={route.view === 'friends'} onClick={() => go({ view: 'friends' })} dot={!!social.incoming.length} />
-            <WsBtn label={trashCount ? `Trash (${trashCount})` : 'Trash'} icon={Trash2} active={route.view === 'trash'} onClick={() => go({ view: 'trash' })} dot={!!trashCount} />
-            {staff && <WsBtn label="Admin" icon={Shield} active={route.view === 'admin'} onClick={() => go({ view: 'admin' })} />}
+            <WsBtn label={social.incoming.length ? `Friends (${social.incoming.length} requests)` : 'Friends'} icon={Users} active={route.view === 'friends'} onClick={() => go({ view: 'friends', from: project.id })} dot={!!social.incoming.length} />
+            <WsBtn label={trashCount ? `Trash (${trashCount})` : 'Trash'} icon={Trash2} active={route.view === 'trash'} onClick={() => go({ view: 'trash', from: project.id })} dot={!!trashCount} />
+            {staff && <WsBtn label="Admin" icon={Shield} active={route.view === 'admin'} onClick={() => go({ view: 'admin', from: project.id })} />}
           </div>
         ) : (
           <Section id="workspace" label="Workspace" collapsed={collapsed} toggle={toggle} icon={icon}>
             <Item label="Home" icon={Home} active={route.view === 'home'} onClick={() => go({ view: 'home' })} />
             <Item label="Projects" icon={LayoutGrid} active={route.view === 'projects'} onClick={() => go({ view: 'projects' })} />
             {s.showStats && <Item label="Statistics" icon={BarChart3} active={route.view === 'statistics'} onClick={() => go({ view: 'statistics', ...(project ? { scope: project.id } : {}) })} />}
-            <Item label="Friends" icon={Users} active={route.view === 'friends'} onClick={() => go({ view: 'friends' })} badge={social.incoming.length ? String(social.incoming.length) : undefined} />
-            <Item label="Trash" icon={Trash2} active={route.view === 'trash'} onClick={() => go({ view: 'trash' })} badge={trashCount ? String(trashCount) : undefined} />
-            {staff && <Item label="Admin" icon={Shield} active={route.view === 'admin'} onClick={() => go({ view: 'admin' })} />}
+            <Item label="Friends" icon={Users} active={route.view === 'friends'} onClick={() => go({ view: 'friends', from: project?.id })} badge={social.incoming.length ? String(social.incoming.length) : undefined} />
+            <Item label="Trash" icon={Trash2} active={route.view === 'trash'} onClick={() => go({ view: 'trash', from: project?.id })} badge={trashCount ? String(trashCount) : undefined} />
+            {staff && <Item label="Admin" icon={Shield} active={route.view === 'admin'} onClick={() => go({ view: 'admin', from: project?.id })} />}
           </Section>
         )}
 
@@ -187,17 +187,24 @@ function PinnedItems({ projectId }: { projectId: string }) {
   const pins = s.pins.filter((p) => p.projectId === projectId);
   const data = useLiveQuery(async () => ({
     scenes: await db.scenes.bulkGet(pins.filter((p) => p.kind === 'scene').map((p) => p.id)),
+    allScenes: await db.scenes.where('projectId').equals(projectId).toArray(),
     ents: await db.entities.bulkGet(pins.filter((p) => p.kind === 'entity').map((p) => p.id)),
     chapters: await db.chapters.where('projectId').equals(projectId).toArray(),
   }), [pins.map((p) => p.id).join()]);
   if (!pins.length || !data) return null;
-  const items = pins.map((p) => p.kind === 'scene' ? { p, s: data.scenes.find((x) => x?.id === p.id) } : { p, e: data.ents.find((x) => x?.id === p.id) }).filter((x) => ('s' in x ? x.s : x.e));
+  const items = pins.map((p) => p.kind === 'scene' ? { p, s: data.scenes.find((x) => x?.id === p.id) } : p.kind === 'chapter' ? { p, c: data.chapters.find((x) => x.id === p.id) } : { p, e: data.ents.find((x) => x?.id === p.id) })
+    .filter((x) => ('s' in x ? x.s : 'c' in x ? x.c : x.e));
   if (!items.length) return null;
   const unpinMenu = (e: React.MouseEvent, p: (typeof pins)[number]) => openMenu(e, [{ label: 'Unpin from sidebar', icon: <PinOff size={14} />, onClick: () => togglePin(p) }]);
   return (
     <div className="sb-pins" aria-label="Pinned">
       <div className="sb-mini-label"><Pin size={10} /> Pinned</div>
-      {items.map((x) => 's' in x && x.s ? (
+      {items.map((x) => 'c' in x && x.c ? (
+        <button key={x.p.id} className={'nav-item small' + (route.view === 'write' && data.allScenes.some((sc) => sc.id === route.sceneId && sc.chapterId === x.c!.id) ? ' active' : '')} onContextMenu={(e) => unpinMenu(e, x.p)}
+          onClick={() => { const first = data.allScenes.filter((sc) => sc.chapterId === x.c!.id).sort((a, b) => a.order - b.order)[0]; go(first ? { view: 'write', projectId, sceneId: first.id } : { view: 'project', projectId }); }}>
+          <BookOpen size={13} style={x.c.color ? { color: x.c.color } : undefined} /><span className="grow ellipsis">{x.c.title}</span>
+        </button>
+      ) : 's' in x && x.s ? (
         <button key={x.p.id} className={'nav-item small' + (route.view === 'write' && route.sceneId === x.s.id ? ' active' : '')} onClick={() => go({ view: 'write', projectId, sceneId: x.s!.id })} onContextMenu={(e) => unpinMenu(e, x.p)}>
           <FileText size={13} /><span className="grow ellipsis">{data.chapters.find((c) => c.id === x.s!.chapterId)?.title} · {x.s.title}</span>
         </button>
@@ -272,6 +279,7 @@ function Manuscript({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [drag, setDrag] = useState<Drag>(null);
   const [over, setOver] = useState<string | null>(null);
+  const [colorFor, setColorFor] = useState<Chapter | null>(null);
   const activeScene = route.view === 'write' ? route.sceneId : null;
 
   if (!chapters || !scenes) return null;
@@ -307,7 +315,8 @@ function Manuscript({ projectId }: { projectId: string }) {
     { label: 'Move up', onClick: () => { if (i > 0) { const ids = chapters.map((c) => c.id); [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]]; reorderChapters(ids); } } },
     { label: 'Move down', onClick: () => { if (i < chapters.length - 1) { const ids = chapters.map((c) => c.id); [ids[i + 1], ids[i]] = [ids[i], ids[i + 1]]; reorderChapters(ids); } } },
     { divider: true, label: '', onClick: () => {} },
-    ...CHAPTER_COLORS.map((c, k) => ({ label: ['No color', 'Red', 'Orange', 'Yellow', 'Green', 'Blue', 'Purple', 'Pink'][k], icon: <span className="dot" style={{ background: c || 'transparent', border: c ? 'none' : '1px solid var(--muted)' }} />, onClick: () => db.chapters.update(ch.id, { color: c }) })),
+    { label: isPinned({ kind: 'chapter', id: ch.id }) ? 'Unpin from sidebar' : 'Pin to sidebar', icon: <Pin size={14} />, onClick: () => togglePin({ projectId, kind: 'chapter', id: ch.id }) },
+    { label: 'Color…', icon: <span className="dot" style={{ background: ch.color || 'transparent', border: ch.color ? 'none' : '1px solid var(--muted)' }} />, onClick: () => setColorFor(ch) },
     { divider: true, label: '', onClick: () => {} },
     { label: 'Delete chapter', danger: true, icon: <Trash2 size={14} />, onClick: async () => {
       const n = byChapter(ch.id).reduce((a, s) => a + s.words, 0);
@@ -367,6 +376,28 @@ function Manuscript({ projectId }: { projectId: string }) {
           </div>
         );
       })}
+      {colorFor && <ColorDialog title={`Color for “${colorFor.title}”`} value={colorFor.color ?? ''} onClose={() => setColorFor(null)} onPick={(c) => { void db.chapters.update(colorFor.id, { color: c, updatedAt: Date.now() }); }} />}
     </div>
+  );
+}
+
+/** Pick a color: a palette, or any color with the color picker */
+function ColorDialog({ title, value, onPick, onClose }: { title: string; value: string; onPick: (c: string) => void; onClose: () => void }) {
+  const [cur, setCur] = useState(value);
+  const set = (c: string) => { setCur(c); onPick(c); };
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div className="pad col gap color-dialog">
+        <div className="palette">
+          <button className={'swatch none' + (!cur ? ' on' : '')} title="No color" aria-label="No color" onClick={() => set('')}>✕</button>
+          {COLOR_PALETTE.map((c) => <button key={c} className={'swatch' + (cur.toLowerCase() === c ? ' on' : '')} style={{ background: c }} title={c} aria-label={c} onClick={() => set(c)} />)}
+        </div>
+        <label className="row gap-s custom-color">
+          <input type="color" value={cur || '#8b7cf6'} onChange={(e) => set(e.target.value)} aria-label="Any color" />
+          <span>Any color… <span className="muted small">{cur || 'none'}</span></span>
+        </label>
+        <div className="row"><span className="grow" /><button className="btn primary sm" onClick={onClose}>Done</button></div>
+      </div>
+    </Modal>
   );
 }

@@ -197,12 +197,13 @@ export function SettingsModal() {
           {tab === 'account' && <AccountSettings />}
           {tab === 'about' && <>
             <h3>Where your writing lives</h3>
-            <p>Everything is stored <strong>only on this device</strong>, inside the app's private database{isTauri() ? ' (in your user profile folder)' : ' (this browser profile)'}. Nothing is uploaded anywhere — there is no account and no server in this version, so nobody else can see your work.</p>
-            <p className="muted">Collaboration (Stage 4) will add an optional account. Only projects you choose to share will sync, and only to people you invite.</p>
-            {!isTauri() && <p className="muted">On a school-managed Chromebook, the school's administrators may have access to the device's browser data. Clearing browser data for this site will also delete your projects — keep backup files.</p>}
+            <p>Your writing is stored on this device, inside the app's private database{isTauri() ? ' (in your user profile folder)' : ' (this browser profile)'}. Without an account, nothing is uploaded anywhere.</p>
+            <p>With an account (Settings → Account & sync), your projects also sync between your devices. They're locked with your password before they leave the device, so nobody else can read them, not even the server.</p>
+            <p className="muted">Only projects you choose to share will be visible, and only to people you invite.</p>
+            {!isTauri() && <p className="muted">Clearing this browser's data for this site deletes the copy stored here. Keep backup files, or use an account so your writing is also synced.</p>}
             <h3>Reset</h3>
             <button className="btn ghost sm" onClick={async () => { if (await confirmDialog('Reset all appearance and editor settings?', 'Your projects are not affected.', { ok: 'Reset' })) { resetSettings(); toast('Settings reset'); } }}>Reset settings to defaults</button>
-            <p className="muted small">Writell 0.16.2</p>
+            <p className="muted small">Writell 0.17.0</p>
           </>}
         </div>
       </div>

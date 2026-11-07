@@ -1,4 +1,4 @@
-import { db, uid, now, type Entity, type Link } from './db';
+import { db, uid, now, type Entity, type Link, type Project } from './db';
 import { deleteSubjectEvents } from './trash';
 
 /*
@@ -66,6 +66,18 @@ export function worldSections(category: string): SectionDef[] {
 }
 
 export const NOTE_TYPES = ['Idea', 'Plot', 'Plot thread', 'Research', 'Dialogue', 'Unused scene', 'Quote', 'Journal', 'Other'] as const;
+
+/* each project can trim or add to these lists */
+export const CUSTOM_GROUP = 'Your types';
+export function worldTypesOf(p: Project | undefined, used: string[] = []) {
+  if (p?.worldTypes) return p.worldTypes;
+  // before the list was edited: the defaults plus any types already in use
+  const extra = [...new Set(used)].filter((c) => c && !WORLD_CATEGORIES.some((w) => w.name === c)).map((name) => ({ name, group: CUSTOM_GROUP }));
+  return [...WORLD_CATEGORIES, ...extra];
+}
+export const noteTypesOf = (p: Project | undefined) => p?.noteTypes ?? [...NOTE_TYPES];
+export const setWorldTypes = (projectId: string, list: { name: string; group: string }[] | undefined) => db.projects.update(projectId, { worldTypes: list, updatedAt: now() });
+export const setNoteTypes = (projectId: string, list: string[] | undefined) => db.projects.update(projectId, { noteTypes: list, updatedAt: now() });
 
 /* ---------------- CRUD ---------------- */
 

@@ -4,9 +4,42 @@
  * map entity: kind 'map', fields {
  *   size: N (grid is N×N), heights: base64 Float32Array (0..1), paint: base64 Uint8Array (biome per cell, 0 = automatic),
  *   seaLevel: 0..1, heightScale: number, image?: dataURL, useImage: boolean (show picture instead of biome colours),
- *   pins: Pin[] (u,v in 0..1, same in both views), view: '2d' | '3d', lowPoly: boolean
+ *   pins: Pin[] (u,v in 0..1, same in both views), view: '2d' | '3d', lowPoly: boolean,
+ *   hfmt?: 'u16' (heights stored as 16-bit numbers: half the size), objects?: MapObject[]
  * }
  */
+
+/* ---------- sizes ---------- */
+export const MAP_SIZES: { id: string; N: number; label: string; sub: string }[] = [
+  { id: 'small', N: 160, label: 'Small', sub: 'An island or a region' },
+  { id: 'medium', N: 256, label: 'Medium', sub: 'A country' },
+  { id: 'large', N: 384, label: 'Large', sub: 'Several countries' },
+  { id: 'huge', N: 512, label: 'Huge', sub: 'A continent' },
+  { id: 'giant', N: 768, label: 'Giant', sub: 'A whole world' },
+];
+export const MAX_N = 768;
+/** width of the land in 3D units (the first maps were 160 cells = 100 units; every size keeps that cell size) */
+export const worldSize = (N: number) => (100 * (N - 1)) / 159;
+export const sizeLabel = (N: number) => MAP_SIZES.find((s) => s.N === N)?.label ?? `${N}×${N}`;
+
+/* ---------- things you can place ---------- */
+export type ObjKind = 'house' | 'cottage' | 'tower' | 'castle' | 'wall' | 'bridge' | 'tent' | 'well' | 'flag' | 'tree' | 'pine' | 'rock';
+export interface MapObject { id: string; kind: ObjKind; u: number; v: number; u2?: number; v2?: number; rot: number; scale: number; color?: string }
+export const OBJECTS: { kind: ObjKind; label: string; group: string; line?: boolean; color: string }[] = [
+  { kind: 'house', label: 'House', group: 'Buildings', color: '#c9b18a' },
+  { kind: 'cottage', label: 'Cottage', group: 'Buildings', color: '#d8c7a0' },
+  { kind: 'tower', label: 'Tower', group: 'Buildings', color: '#9a958c' },
+  { kind: 'castle', label: 'Castle', group: 'Buildings', color: '#a7a198' },
+  { kind: 'tent', label: 'Tent', group: 'Buildings', color: '#d9c9a3' },
+  { kind: 'well', label: 'Well', group: 'Buildings', color: '#8f8a82' },
+  { kind: 'wall', label: 'Wall', group: 'Lines', line: true, color: '#8f8a82' },
+  { kind: 'bridge', label: 'Bridge', group: 'Lines', line: true, color: '#8a6a48' },
+  { kind: 'tree', label: 'Tree', group: 'Nature', color: '#3f7d3a' },
+  { kind: 'pine', label: 'Pine', group: 'Nature', color: '#2d5e3a' },
+  { kind: 'rock', label: 'Rock', group: 'Nature', color: '#8d8a86' },
+  { kind: 'flag', label: 'Flag', group: 'Markers', color: '#e06c75' },
+];
+export const objDef = (k: ObjKind) => OBJECTS.find((o) => o.kind === k)!;
 
 export interface Pin { id: string; u: number; v: number; label: string; entityId?: string; color: string }
 
@@ -46,6 +79,43 @@ export function cellColor(h: number, paint: number, sea: number): [number, numbe
 }
 
 /* ---------- encoding ---------- */
+/** heights as 16-bit numbers (plenty of detail, half the size of 32-bit) */
+export function encodeHeights(h: Float32Array): string {
+  const u = new Uint16Array(h.length);
+  for (let i = 0; i < h.length; i++) u[i] = Math.round(Math.max(0, Math.min(1, h[i])) * 65535);
+  return encode(new Uint8Array(u.buffer));
+}
+export function decodeHeights(b64: string | undefined, n: number, fmt?: unknown): Float32Array {
+  if (fmt !== 'u16') return decodeF32(b64, n);
+  if (!b64) return new Float32Array(n);
+  const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const u = new Uint16Array(bytes.buffer, 0, Math.floor(bytes.length / 2));
+  if (u.length !== n) return new Float32Array(n);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = u[i] / 65535;
+  return out;
+}
+
+/** Make a map bigger: the old land sits in the middle, with open sea (or flat land) around it */
+export function expandMap(h: Float32Array, paint: Uint8Array, N: number, N2: number, fill: number) {
+  const off = Math.floor((N2 - N) / 2);
+  const h2 = new Float32Array(N2 * N2).fill(fill), p2 = new Uint8Array(N2 * N2);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { h2[(y + off) * N2 + x + off] = h[y * N + x]; p2[(y + off) * N2 + x + off] = paint[y * N + x]; }
+  // soften the old edge so it doesn't end in a cliff
+  const band = Math.min(12, off);
+  for (let y = 0; y < N2; y++) for (let x = 0; x < N2; x++) {
+    const ix = x - off, iy = y - off;
+    const d = Math.max(Math.max(-ix, ix - (N - 1)), Math.max(-iy, iy - (N - 1)));
+    if (d > 0 && d <= band) {
+      const cx = Math.max(0, Math.min(N - 1, ix)), cy = Math.max(0, Math.min(N - 1, iy));
+      const t = d / band;
+      h2[y * N2 + x] = h[cy * N + cx] * (1 - t * t * (3 - 2 * t)) + fill * (t * t * (3 - 2 * t));
+    }
+  }
+  const remap = (u: number) => (u * (N - 1) + off) / (N2 - 1);
+  return { h: h2, p: p2, remap };
+}
 export function encode(arr: Float32Array | Uint8Array): string {
   const bytes = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
   let s = '';
@@ -132,7 +202,7 @@ export function smoothAll(h: Float32Array, N: number, passes: number) {
 }
 
 /* ---------- brushes (grid coordinates) ---------- */
-export type Tool = 'view' | 'raise' | 'lower' | 'smooth' | 'flatten' | 'paint' | 'pin';
+export type Tool = 'view' | 'raise' | 'lower' | 'smooth' | 'flatten' | 'paint' | 'pin' | 'object' | 'select';
 
 export function applyBrush(h: Float32Array, paint: Uint8Array, N: number, cx: number, cy: number, tool: Tool, radius: number, strength: number, biome: number, flatTo: number) {
   const r2 = radius * radius;

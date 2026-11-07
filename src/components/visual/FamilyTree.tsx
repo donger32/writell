@@ -64,7 +64,7 @@ export function FamilyTreesView({ projectId, entityId }: { projectId: string; en
         </>}
       </div>
       {tree ? <TreeCanvas key={tree.id} tree={tree} projectId={projectId} /> : (
-        <div className="edetail-empty"><h3>Family trees</h3><p className="muted">Build genealogy diagrams from your characters: parents, adoptions, marriages and remarriages, half- and step-siblings, unknown parents. You can have as many trees as you like.</p><button className="btn primary" onClick={create}><Plus size={14} /> New family tree</button></div>
+        <div className="edetail-empty"><h3>Tree</h3><p className="muted">Build genealogy diagrams from your characters: parents, adoptions, marriages and remarriages, half- and step-siblings, unknown parents. You can have as many trees as you like.</p><button className="btn primary" onClick={create}><Plus size={14} /> New tree</button></div>
       )}
     </div>
   );

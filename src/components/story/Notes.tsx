@@ -1,9 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { TypePicker } from './TypePicker';
 import { useState } from 'react';
 import { Paperclip, Download, Upload, Folder, Pin, Trash2, Plus, X, Inbox, ImagePlus, FileText, BookOpen, Check } from 'lucide-react';
 import { db, uid, type Entity } from '../../db';
 import { saveBinary } from '../../util';
-import { NOTE_TYPES, addLink, createEntity, deleteEntity, pickImage, removeLink, updateEntity } from '../../entities';
+import { NOTE_TYPES, noteTypesOf, setNoteTypes, addLink, createEntity, deleteEntity, pickImage, removeLink, updateEntity } from '../../entities';
 import { toastTrashed } from '../TrashView';
 import { go } from '../../nav';
 import { confirmDialog, toast } from '../ui';
@@ -37,8 +38,11 @@ function importNoteFiles(projectId: string) {
 export function NotesView({ projectId, entityId, filter: initial }: { projectId: string; entityId?: string; filter?: string }) {
   const items = useLiveQuery(() => db.entities.where('[projectId+kind]').equals([projectId, 'note']).toArray(), [projectId]);
   const opts = useProjectOptions(projectId);
+  const project = useLiveQuery(() => db.projects.get(projectId), [projectId]);
   const [filter, setFilter] = useState(initial ?? 'All');
   if (!items || !opts) return null;
+  const types = noteTypesOf(project);
+  const usedTypes = [...new Set(items.map((n) => String(n.fields.type ?? '')).filter(Boolean))];
   const folders = [...new Set(items.map((n) => String(n.fields.folder ?? '')).filter(Boolean))].sort();
   const inboxCount = items.filter((n) => n.fields.inbox).length;
   const shown = items.filter((n) =>
@@ -46,7 +50,7 @@ export function NotesView({ projectId, entityId, filter: initial }: { projectId:
       : filter.startsWith('folder:') ? n.fields.folder === filter.slice(7) : n.fields.type === filter,
   ).map((n) => ({ ...n, favorite: !!n.fields.pinned })); // pinned notes float to the top
   const create = async () => {
-    const type = (NOTE_TYPES as readonly string[]).includes(filter) ? filter : 'Idea';
+    const type = usedTypes.includes(filter) || types.includes(filter) ? filter : types.includes('Idea') ? 'Idea' : types[0] ?? '';
     const folder = filter.startsWith('folder:') ? filter.slice(7) : '';
     const id = await createEntity(projectId, 'note', '', { type, folder, body: '', inbox: filter === 'Inbox' });
     go({ view: 'notes', projectId, entityId: id });
@@ -59,18 +63,18 @@ export function NotesView({ projectId, entityId, filter: initial }: { projectId:
       filters={
         <div className="filter-chips">
           {['All', 'Inbox', 'Pinned', ...(items.some((n) => n.fields.type === 'Plot thread') ? ['Open threads'] : [])].map((c) => <button key={c} className={'chip' + (filter === c ? ' on' : '')} onClick={() => setFilter(c)}>{c === 'Inbox' ? `Inbox${inboxCount ? ` (${inboxCount})` : ''}` : c}</button>)}
-          {NOTE_TYPES.filter((t) => items.some((n) => n.fields.type === t)).map((c) => <button key={c} className={'chip' + (filter === c ? ' on' : '')} onClick={() => setFilter(c)}>{c}</button>)}
+          {[...types.filter((t) => usedTypes.includes(t)), ...usedTypes.filter((t) => !types.includes(t))].map((c) => <button key={c} className={'chip' + (filter === c ? ' on' : '')} onClick={() => setFilter(c)}>{c}</button>)}
           {folders.map((f) => <button key={f} className={'chip' + (filter === 'folder:' + f ? ' on' : '')} onClick={() => setFilter('folder:' + f)}><Folder size={11} /> {f}</button>)}
           <button className="chip" title="Turn text or Markdown files into notes (they land in the Inbox)" onClick={() => importNoteFiles(projectId)}><Upload size={11} /> Import…</button>
         </div>
       }
       empty={<><h3>Notes & ideas</h3><p className="muted">Press <kbd>Ctrl + Shift + N</kbd> anywhere to jot an idea into the inbox without deciding where it belongs.</p><button className="btn primary" onClick={create}><Plus size={14} /> New note</button></>}>
-      {active && <NoteEditor key={active.id} n={active} opts={opts} folders={folders} />}
+      {active && <NoteEditor key={active.id} n={active} opts={opts} folders={folders} types={types} all={items} />}
     </EntityShell>
   );
 }
 
-function NoteEditor({ n, opts, folders }: { n: Entity; opts: NonNullable<ReturnType<typeof useProjectOptions>>; folders: string[] }) {
+function NoteEditor({ n, opts, folders, types, all }: { n: Entity; opts: NonNullable<ReturnType<typeof useProjectOptions>>; folders: string[]; types: string[]; all: Entity[] }) {
   const set = (k: string, v: unknown) => updateEntity(n.id, { fields: { [k]: v } });
   const images = (n.fields.images as string[] | undefined) ?? [];
   const links = useLiveQuery(() => db.links.where('[fromType+fromId]').equals(['entity', n.id]).filter((l) => l.relation === 'about').toArray(), [n.id]);
@@ -81,10 +85,16 @@ function NoteEditor({ n, opts, folders }: { n: Entity; opts: NonNullable<ReturnT
 
   return (
     <div className="note-editor">
+      <div className="note-main">
       <div className="row gap-s wrap note-bar">
         {!!n.fields.inbox && <button className="btn sm" onClick={() => set('inbox', false)}><Check size={13} /> File it (remove from inbox)</button>}
         {!n.fields.inbox && <button className="btn ghost sm" onClick={() => set('inbox', true)}><Inbox size={13} /> Back to inbox</button>}
-        <select className="pill-select" value={String(n.fields.type ?? 'Idea')} onChange={(e) => set('type', e.target.value)}>{NOTE_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
+        <TypePicker value={String(n.fields.type ?? '')} types={types.map((name) => ({ name }))} what="type"
+          countOf={(t) => all.filter((x) => x.fields.type === t).length}
+          onPick={(t) => set('type', t)}
+          onAdd={(t) => void setNoteTypes(n.projectId, [...types, t])}
+          onRemove={(t) => void setNoteTypes(n.projectId, types.filter((x) => x !== t))}
+          onReset={NOTE_TYPES.every((t) => types.includes(t)) ? undefined : () => void setNoteTypes(n.projectId, [...NOTE_TYPES, ...types.filter((t) => !(NOTE_TYPES as readonly string[]).includes(t))])} />
         {n.fields.type === 'Plot thread' && <label className="check small"><input type="checkbox" checked={!!n.fields.resolved} onChange={(e) => set('resolved', e.target.checked)} /> Resolved</label>}
         <input className="pill-select" list="note-folders" placeholder="Folder…" defaultValue={String(n.fields.folder ?? '')} onBlur={(e) => set('folder', e.target.value.trim())} style={{ width: 130 }} />
         <datalist id="note-folders">{folders.map((f) => <option key={f} value={f} />)}</datalist>
@@ -95,7 +105,9 @@ function NoteEditor({ n, opts, folders }: { n: Entity; opts: NonNullable<ReturnT
       <Field wrap className="name-field" value={n.name} placeholder="Title" onCommit={(v) => updateEntity(n.id, { name: v })} />
       <Field className="note-body" value={String(n.fields.body ?? '')} long placeholder="Write anything…" onCommit={(v) => set('body', v)} />
       <TagEditor tags={n.tags} suggestions={opts.allTags} onChange={(tags) => updateEntity(n.id, { tags })} />
+      </div>
 
+      <div className="note-side">
       <div className="note-section">
         <div className="row"><h4 className="grow">Linked to</h4>
           <Picker options={allOpts} exclude={linkedIds} buttonLabel="Link" placeholder="Character, place, chapter, scene…" onPick={(id) => addLink(n.projectId, 'entity', n.id, typeOf(id), id, 'about')} />
@@ -134,6 +146,7 @@ function NoteEditor({ n, opts, folders }: { n: Entity; opts: NonNullable<ReturnT
       </div>
       <div className="note-section"><h4>On the timeline</h4><TimelineBox projectId={n.projectId} kind="note" id={n.id} name={n.name || 'Note'} involve={[n.id]} /></div>
       <Attachments ownerId={n.id} projectId={n.projectId} />
+      </div>
       {big && <div className="overlay" onMouseDown={() => setBig(null)}><img src={big} alt="" className="lightbox" /></div>}
     </div>
   );
