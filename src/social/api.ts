@@ -14,13 +14,16 @@ export interface Profile {
 }
 const BASIC = 'id,username,display_name,bio,avatar,public_key';
 const FULL = BASIC + ',staff,badges,name_color,title,name_locked,banned_until,ban_reason';
-let extCols = true; // false until the stage D setup script has been run
+let extCols = true; // false while the stage D setup script hasn't been run
+let extCheckedAt = 0;
 /** Run a profile query with the newer columns, falling back if the database doesn't have them yet */
 export async function profileQuery<T>(run: (cols: string) => PromiseLike<{ data: T; error: { message?: string; code?: string } | null }>): Promise<{ data: T; error: { message?: string; code?: string } | null }> {
+  // look again every minute, so running the setup script while Writell is open works without a restart
+  if (!extCols && Date.now() - extCheckedAt > 60_000) extCols = true;
   if (extCols) {
     const r = await run(FULL);
     if (!r.error || !/column|42703|PGRST204/.test((r.error.message ?? '') + r.error.code)) return r;
-    extCols = false;
+    extCols = false; extCheckedAt = Date.now();
   }
   return run(BASIC);
 }

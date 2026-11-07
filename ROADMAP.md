@@ -2,6 +2,9 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.15.1
+- Admin badge, colours and the Admin page now show up without restarting Writell if the stage D script was run while it was open.
+
 ## Changes in v0.15.0 — project chat & admin tools (stage D)
 **Needs `supabase/writell-stage-d.sql` run once** (then the last line with your username).
 - **Project chat** in every shared project (sidebar → Chat, or the chat button in the editor): messages, replies to anything, comments and "who changed what" in one Discord-style feed, with filters (All / Messages / Comments / Changes). Encrypted with the project key like everything else.
