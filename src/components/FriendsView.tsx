@@ -130,7 +130,7 @@ function FindPeople({ onOpen }: { onOpen: (p: Profile) => void }) {
   const [res, setRes] = useState<Profile[] | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    if (q.trim().replace(/^@/, '').length < 2) { setRes(null); return; }
+    if (!q.trim().replace(/^@/, '')) { setRes(null); return; }
     setBusy(true);
     const t = window.setTimeout(async () => { try { setRes(await searchPeople(q)); } catch (e) { toast((e as Error).message); } finally { setBusy(false); } }, 300);
     return () => window.clearTimeout(t);
@@ -207,7 +207,9 @@ export function ProfileEditor({ first, onDone }: { first?: boolean; onDone: () =
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const check = useRef(0);
-  const valid = USERNAME_RE.test(username);
+  // a special name an admin gave you stays valid as long as you keep it
+  const special = !!s.me && username === s.me.username && !USERNAME_RE.test(username);
+  const valid = USERNAME_RE.test(username) || special;
   useEffect(() => {
     setTaken(null);
     if (!valid || username === s.me?.username) return;
@@ -237,7 +239,7 @@ export function ProfileEditor({ first, onDone }: { first?: boolean; onDone: () =
         <div className="uname-input"><span className="muted">@</span><input className="input" value={username} maxLength={20} autoCapitalize="none" autoCorrect="off" spellCheck={false}
           onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} placeholder="e.g. mara_writes" /></div>
         <span className={'small ' + (taken ? 'danger-text' : taken === false ? 'acct-ok' : 'muted')}>
-          {!username ? '3–20 characters: letters, numbers and _' : !valid ? 'At least 3 characters' : taken ? 'Taken' : taken === false ? 'Available' : ' '}
+          {special ? '✨ A special username from an admin' : !username ? '3–20 characters: letters, numbers and _' : !valid ? 'At least 3 characters' : taken ? 'Taken' : taken === false ? 'Available' : ' '}
         </span>
       </label>
       <label className="sfield"><span>Display name</span><input className="input" value={display} maxLength={40} onChange={(e) => setDisplay(e.target.value)} placeholder="What friends see, e.g. Mara Quill" /></label>

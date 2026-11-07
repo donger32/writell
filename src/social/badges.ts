@@ -47,4 +47,6 @@ export const rankOf = (s?: string | null) => (s ? RANK[s] ?? 0 : 0);
 /** Silly usernames for the "surprise rename" button */
 const A = ['captain', 'sir', 'lady', 'tiny', 'grumpy', 'sneaky', 'sleepy', 'mighty', 'soggy', 'cosmic', 'fluffy', 'spicy', 'wobbly', 'secret'];
 const N = ['noodle', 'potato', 'pickle', 'waffle', 'goblin', 'muffin', 'llama', 'nugget', 'teapot', 'penguin', 'burrito', 'pancake', 'walrus', 'gremlin'];
+/** Usernames admins can give: 1–24 characters, any letters, symbols or emoji, no spaces */
+export const specialNameOk = (n: string) => { const len = [...n].length; return len >= 1 && len <= 24 && !/[\s\p{Cc}]/u.test(n); };
 export const sillyName = () => `${A[Math.floor(Math.random() * A.length)]}_${N[Math.floor(Math.random() * N.length)]}${Math.floor(Math.random() * 90 + 10)}`;

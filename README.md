@@ -40,4 +40,5 @@ Settings → Account & sync. Uses the Supabase project in `src/sync/config.ts`; 
 1. `supabase/writell-sync.sql`: accounts & sync
 2. `supabase/writell-stage-a.sql`, then `writell-stage-a-fix.sql`: profiles & friends
 3. `supabase/writell-stage-b.sql`: shared projects
-4. `supabase/writell-stage-d.sql`: project chat & admin tools
+4. `supabase/writell-stage-d.sql`: project chat & admin tools (last line: your username)
+5. `supabase/writell-special-names.sql`: special usernames admins can hand out

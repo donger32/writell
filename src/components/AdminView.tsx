@@ -4,7 +4,7 @@ import {
   Activity, Ban, Crown, Dice5, Lock, Unlock, Megaphone, PartyPopper, RefreshCw, Search, Sparkles, Snowflake, Heart, Vibrate, Star, Trash2, UserX, Users, X, ScrollText, AtSign,
 } from 'lucide-react';
 import { useSocial } from '../social/api';
-import { BADGES, NAME_COLORS, STAFF_LABEL, badge, rankOf, sillyName } from '../social/badges';
+import { BADGES, NAME_COLORS, STAFF_LABEL, badge, rankOf, sillyName, specialNameOk } from '../social/badges';
 import * as A from '../social/admin';
 import { playLocal } from '../social/effects';
 import { currentUserId } from '../sync/engine';
@@ -125,7 +125,7 @@ function PersonEditor({ p, myRank, onClose, onChanged }: { p: A.Person; myRank: 
   const change = async (c: A.Changes, ok: string) => { if (await run(() => A.update(p.id, c), ok)) onChanged(); };
   const banned = p.banned_until && Date.parse(p.banned_until) > Date.now();
   const toggleBadge = (id: string) => change({ badges: p.badges.includes(id) ? p.badges.filter((b) => b !== id) : [...p.badges, id] }, p.badges.includes(id) ? `Took away ${badge(id)?.label}` : `Gave ${name} “${badge(id)?.label}” ${badge(id)?.emoji}`);
-  const unameOk = /^[a-z0-9_]{3,20}$/.test(username);
+  const unameOk = specialNameOk(username);
   return (
     <Modal title={`@${p.username}`} onClose={onClose}>
       <div className="pad col gap admin-editor">
@@ -142,7 +142,7 @@ function PersonEditor({ p, myRank, onClose, onChanged }: { p: A.Person; myRank: 
           <section>
             <h4>Name</h4>
             <div className="row gap-s wrap">
-              <label className="field grow"><span>Username</span><input className="input mono" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} /></label>
+              <label className="field grow"><span>Username</span><input className="input mono" value={username} onChange={(e) => setUsername(e.target.value.replace(/\s/g, ''))} spellCheck={false} autoCapitalize="none" /></label>
               <label className="field grow"><span>Display name</span><input className="input" value={display} maxLength={40} onChange={(e) => setDisplay(e.target.value)} /></label>
             </div>
             <div className="row gap-s wrap">
@@ -150,7 +150,8 @@ function PersonEditor({ p, myRank, onClose, onChanged }: { p: A.Person; myRank: 
               <button className="btn sm" onClick={() => { const n = sillyName(); change({ username: n, display_name: n.replace(/_/g, ' ').replace(/\d+$/, '').replace(/\b\w/g, (c) => c.toUpperCase()).trim() }, `${name} is now @${n} 🎲`); }}><Dice5 size={13} /> Surprise rename</button>
               <button className="btn ghost sm" onClick={() => change({ name_locked: !p.name_locked }, p.name_locked ? 'Name unlocked' : `Locked: ${name} can’t change their name`)}>{p.name_locked ? <><Unlock size={13} /> Unlock name</> : <><Lock size={13} /> Lock name</>}</button>
             </div>
-            {!unameOk && <span className="small danger-text">3–20 lowercase letters, numbers or _</span>}
+            {!unameOk ? <span className="small danger-text">1–24 characters, no spaces</span>
+              : <span className="muted small">Admins can give special usernames: one letter, capitals, symbols or emoji (★, ✨, 🐐…). People can’t pick these themselves.</span>}
           </section>
           <section>
             <h4>Title</h4>
@@ -290,8 +291,8 @@ function NamesTab() {
   const [note, setNote] = useState('');
   const load = () => A.reserved().then(setList).catch((e) => toast(e.message));
   useEffect(() => { void load(); }, []);
-  const clean = name.trim().toLowerCase().replace(/^@/, '');
-  const ok = /^[a-z0-9_]{3,20}$/.test(clean);
+  const clean = name.trim();
+  const ok = specialNameOk(clean);
   return (
     <div className="col gap">
       <p className="muted small">Nobody can pick these usernames themselves. To give one to someone, open them under People and rename them: admins can use reserved names.</p>
@@ -300,7 +301,7 @@ function NamesTab() {
         <input className="input grow" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
         <button className="btn primary" disabled={!ok} onClick={() => run(() => A.reserve(clean, note.trim()), `@${clean} reserved`).then((r) => { if (r) { setName(''); setNote(''); void load(); } })}><Crown size={14} /> Reserve</button>
       </div>
-      {name && !ok && <span className="small danger-text">3–20 lowercase letters, numbers or _</span>}
+      {name && !ok && <span className="small danger-text">1–24 characters, no spaces</span>}
       {!list.length ? <p className="muted small">No reserved names yet. Ideas: admin, writell, support, official.</p> : (
         <ul className="reserved-list">{list.map((r) => (
           <li key={r.name}><span className="mono">@{r.name}</span><span className="muted small grow">{r.note}</span><button className="icon-btn sm" aria-label={`Free @${r.name}`} title="Free this name" onClick={() => run(() => A.unreserve(r.name), 'Name freed').then(() => load())}><X size={13} /></button></li>

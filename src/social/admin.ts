@@ -12,6 +12,7 @@ const err = (e: { message?: string; code?: string } | null) => {
   const m = e.message ?? '';
   if (/writell_admin|writell_rank|schema cache|PGRST20/.test(m)) return new Error('The admin tools aren’t set up in Supabase yet: run the stage D setup script.');
   if (/row-level security/.test(m)) return new Error('Only staff can do that.');
+  if (/username_shape|reserved_shape|username_check|reserved_name_check/.test(m)) return new Error(/username_check|reserved_name_check/.test(m) ? 'Special names need the special-names setup script in Supabase first.' : 'Names can be 1–24 characters, without spaces.');
   return new Error(m.replace(/^.*?exception: /, '') || 'Something went wrong.');
 };
 const ok = <T>(r: { data: T; error: { message?: string; code?: string } | null }) => { if (r.error) throw err(r.error); return r.data; };
@@ -37,7 +38,7 @@ export async function setStaff(target: string, rank: 'admin' | 'mod' | null) { o
 /* reserved usernames */
 export interface Reserved { name: string; note: string }
 export const reserved = async () => (ok(await sb().from('writell_reserved').select('name,note').order('name')) ?? []) as Reserved[];
-export async function reserve(name: string, note = '') { ok(await sb().from('writell_reserved').insert({ name: name.trim().toLowerCase().replace(/^@/, ''), note })); }
+export async function reserve(name: string, note = '') { ok(await sb().from('writell_reserved').insert({ name: name.trim(), note })); }
 export async function unreserve(name: string) { ok(await sb().from('writell_reserved').delete().eq('name', name)); }
 
 /* announcements */

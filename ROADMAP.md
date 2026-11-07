@@ -2,6 +2,10 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.15.2
+**Needs `supabase/writell-special-names.sql` run once.**
+- Special usernames: admins can give anyone a username of 1–24 characters with capitals, symbols or emoji (Z, ★Cleo★, 🐐ben). People can't pick these themselves, but keep them when they edit their profile. Typing a special name exactly in Find people finds it. Reserved names can be special too.
+
 ## Changes in v0.15.1
 - Admin badge, colours and the Admin page now show up without restarting Writell if the stage D script was run while it was open.
 

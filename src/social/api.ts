@@ -139,7 +139,9 @@ export async function usernameTaken(name: string): Promise<boolean> {
 }
 export async function saveProfile(p: { username: string; display_name: string; bio: string; avatar: string | null }) {
   const uid = me();
-  const row = { id: uid, username: p.username.trim().toLowerCase(), display_name: p.display_name.trim(), bio: p.bio.trim(), avatar: p.avatar, updated_at: new Date().toISOString() };
+  // keep a special name an admin gave you exactly as it is
+  const username = state.me && p.username === state.me.username ? p.username : p.username.trim().toLowerCase();
+  const row = { id: uid, username, display_name: p.display_name.trim(), bio: p.bio.trim(), avatar: p.avatar, updated_at: new Date().toISOString() };
   const { error } = state.me
     ? await sb().from('writell_profiles').update(row).eq('id', uid)
     : await sb().from('writell_profiles').insert(row);
@@ -172,14 +174,22 @@ async function ensureKeyPair() {
 
 /* ---------------- finding people ---------------- */
 export async function searchPeople(q: string): Promise<Profile[]> {
-  const clean = q.trim().replace(/^@/, '').replace(/[^\p{L}\p{N}_ .'-]/gu, '').slice(0, 40);
-  if (clean.length < 2) return [];
+  const raw = q.trim().replace(/^@/, '').slice(0, 40);
+  const clean = raw.replace(/[^\p{L}\p{N}_ .'-]/gu, '');
+  if (!raw) return [];
+  const empty = Promise.resolve({ data: [] as unknown, error: null });
   const uname = clean.toLowerCase().replace(/[^a-z0-9_]/g, '');
   const ors = [`display_name.ilike.%${clean}%`];
   if (uname) ors.unshift(`username.ilike.${uname}%`);
-  const { data, error } = await profileQuery((c) => sb().from('writell_profiles').select(c).or(ors.join(',')).neq('id', me()).limit(20));
+  const [{ data, error }, exact] = await Promise.all([
+    clean.length >= 2 ? profileQuery((c) => sb().from('writell_profiles').select(c).or(ors.join(',')).neq('id', me()).limit(20)) : empty,
+    // special names from admins (★, emoji, one letter…) are found by typing them exactly
+    profileQuery((c) => sb().from('writell_profiles').select(c).eq('username', raw).neq('id', me()).limit(1)),
+  ]);
   if (error) throw friendly(error);
-  return (data ?? []) as unknown as Profile[];
+  const list = (data ?? []) as unknown as Profile[];
+  const ex = ((exact.data ?? []) as unknown as Profile[]).filter((p) => !list.some((x) => x.id === p.id));
+  return [...ex, ...list];
 }
 export async function getProfile(id: string): Promise<Profile | null> {
   const { data } = await profileQuery((c) => sb().from('writell_profiles').select(c).eq('id', id).maybeSingle());
