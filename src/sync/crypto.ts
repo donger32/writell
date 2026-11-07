@@ -105,3 +105,6 @@ export const randomBytes = (n: number) => rand(n);
 async function linkKey(secret: Uint8Array) { return subtle().importKey('raw', secret as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt']); }
 export const sealWithSecret = async (secret: Uint8Array, raw: Uint8Array) => seal(await linkKey(secret), raw);
 export const openWithSecret = async (secret: Uint8Array, s: string) => unseal(await linkKey(secret), s);
+/* live co-writing: small binary updates, encrypted with the project key */
+export const encryptBytes = (key: CryptoKey, bytes: Uint8Array) => seal(key, bytes);
+export const decryptBytes = (key: CryptoKey, s: string) => unseal(key, s);

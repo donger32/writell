@@ -1,3 +1,4 @@
+import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { Extension, Mark, mergeAttributes, type Editor } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection, type Transaction } from '@tiptap/pm/state';
 import { Fragment, type Node as PMNode } from '@tiptap/pm/model';
@@ -102,6 +103,7 @@ export const TrackChanges = Extension.create<{ enabled: () => boolean }>({
         if (changed.length !== 1) return null;
         const tr0 = changed[0];
         if (tr0.getMeta(SKIP) || tr0.getMeta('history$') || tr0.getMeta('appendedTransaction')) return null;
+        if (trs.some((t) => t.getMeta(ySyncPluginKey))) return null; // a co-writer's edit, not yours
         const ins = newState.schema.marks.insertion, del = newState.schema.marks.deletion;
         if (!ins || !del) return null;
         const at = Date.now();

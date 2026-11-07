@@ -21,6 +21,7 @@ import { createClient, type SupabaseClient, type Session } from '@supabase/supab
 import { useSyncExternalStore } from 'react';
 import { db, uid, now } from '../db';
 import { SUPABASE_KEY, SUPABASE_URL, WEB_APP_URL } from './config';
+import { mergeStates } from './ydoc';
 import { createKeys, decryptJSON, encryptJSON, unlockWithPassword, unlockWithRecovery, rewrapWithPassword, b64, unb64, importPrivateJwk, importProjectKey, openSealed, type KeyRow } from './crypto';
 
 export const SYNCED = ['projects', 'chapters', 'scenes', 'activity', 'entities', 'links', 'files'] as const;
@@ -305,6 +306,20 @@ async function applyRemote(r: { tbl: Tbl; id: string; deleted: boolean; data: st
   const pid = pidOf(r.tbl, plain);
   if (hash === prev && local && !force) return;                 // already have this version
   if (local && localHash === hash) { await sdb.state.put({ k, hash, pid, dest }); dirty.delete(k); return; }
+  // live co-writing scenes: combine both versions instead of choosing one
+  const ly = (local as { ystate?: string } | undefined)?.ystate, ry = (plain as { ystate?: string }).ystate;
+  if (r.tbl === 'scenes' && local && ly && ry && ly !== ry) {
+    const m = mergeStates(ly, ry);
+    if (!m.same) {
+      const words = (jsonText(m.content).match(/\S+/g) ?? []).length;
+      const merged = { ...plain, content: m.content, ystate: m.ystate, words, updatedAt: Math.max(Number(local.updatedAt ?? 0), Number(plain.updatedAt ?? 0)) };
+      await remoteTx('scenes', () => table('scenes').put(merged));
+      await sdb.state.put({ k, hash, pid, dest }); // remember theirs; ours (the merge) goes up next
+      dirty.add(k); schedulePush(300);
+      window.dispatchEvent(new CustomEvent('writell:remote-scene', { detail: plain.id }));
+      return;
+    }
+  }
   if (local && localChanged) {
     // both changed it: the newer edit wins
     const lu = Number(local.updatedAt ?? 0), ru = Number(plain.updatedAt ?? 0);
@@ -579,4 +594,11 @@ export async function startSync() {
   } catch (e) {
     setStatus({ phase: navigator.onLine ? 'error' : 'offline', message: (e as Error).message });
   }
+}
+
+/** Plain text of an editor document (for word counts) */
+function jsonText(n: unknown): string {
+  if (!n || typeof n !== 'object') return '';
+  const o = n as { text?: string; content?: unknown[] };
+  return (o.text ?? '') + ' ' + (o.content ?? []).map(jsonText).join(' ');
 }

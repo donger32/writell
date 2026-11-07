@@ -60,6 +60,8 @@ export interface Scene {
   order: number;
   status: Status;
   /** ProseMirror JSON document (lossless canonical format) */
+  /** shared projects only: the live co-writing document (merges everyone's edits) */
+  ystate?: string;
   content: unknown;
   /** Cached plain stats so lists don't have to parse every document */
   words: number;
@@ -305,12 +307,12 @@ const SNAPSHOT_EVERY = 5 * 60 * 1000;
 const MAX_AUTO_SNAPSHOTS = 50;
 
 /** `typed`: words written since the last save (deleting never counts against you) */
-export async function saveSceneContent(sceneId: string, content: unknown, words: number, typed?: number) {
+export async function saveSceneContent(sceneId: string, content: unknown, words: number, typed?: number, ystate?: string) {
   await db.transaction('rw', [db.scenes, db.projects, db.activity, db.snapshots], async () => {
     const scene = await db.scenes.get(sceneId);
     if (!scene) return;
     const t = now();
-    await db.scenes.update(sceneId, { content, words, updatedAt: t });
+    await db.scenes.update(sceneId, { content, words, updatedAt: t, ...(ystate ? { ystate } : {}) });
     await db.projects.update(scene.projectId, { updatedAt: t });
 
     const added = typed ?? words - scene.words;

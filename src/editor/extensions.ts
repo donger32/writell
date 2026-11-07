@@ -1,4 +1,4 @@
-import { Editor, Extension, type JSONContent } from '@tiptap/core';
+import { Editor, Extension, type JSONContent, type AnyExtension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Highlight from '@tiptap/extension-highlight';
 import Typography from '@tiptap/extension-typography';
@@ -34,9 +34,10 @@ export const FocusParagraph = Extension.create<{ enabled: () => boolean }>({
   },
 });
 
-export function baseExtensions() {
+export function baseExtensions(collab = false) {
   return [
     StarterKit.configure({
+      ...(collab ? { undoRedo: false as const } : {}), // live co-writing brings its own undo
       heading: { levels: [1, 2, 3] },
       codeBlock: false,
       code: false,
@@ -52,9 +53,10 @@ export function baseExtensions() {
   ];
 }
 
-export function editorExtensions(focusEnabled: () => boolean, tracking: () => boolean = () => false, mentions?: { names: () => MentionName[]; enabled: () => boolean }) {
+export function editorExtensions(focusEnabled: () => boolean, tracking: () => boolean = () => false, mentions?: { names: () => MentionName[]; enabled: () => boolean }, collab?: AnyExtension[]) {
   return [
-    ...baseExtensions(),
+    ...baseExtensions(!!collab),
+    ...(collab ?? []),
     SmartMarks,
     Placeholder.configure({ placeholder: 'Start writing…' }),
     CharacterCount,

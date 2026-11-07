@@ -1,6 +1,6 @@
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bold, Italic, Underline, Strikethrough, Highlighter, Heading1, Heading2, Heading3, List, ListOrdered, Quote, Link2, Undo2, Redo2,
   Code2, PanelRight, X, Search, BookOpenText, Maximize2, Crosshair, AlignVerticalJustifyCenter, Camera, PenLine, MessageSquarePlus, Flag, CircleDashed, Sparkles, GitPullRequestDraft,
@@ -12,7 +12,17 @@ import { matches } from '../shortcuts';
 import { confirmDialog } from './ui';
 import { AiPanel } from './AiPanel';
 import { TimelineBox } from './visual/TimelineBox';
-import { useSharedRoles } from '../sync/engine';
+import { sharedKey, useSharedRoles } from '../sync/engine';
+import { getSchema } from '@tiptap/core';
+import * as Y from 'yjs';
+import Collaboration from '@tiptap/extension-collaboration';
+import CollaborationCaret from '@tiptap/extension-collaboration-caret';
+import { ySyncPluginKey } from '@tiptap/y-tiptap';
+import { sceneDoc, encodeDoc, FIELD, REMOTE } from '../sync/ydoc';
+import { joinLive, Awareness, type LiveStatus } from '../sync/live';
+import { unb64 } from '../sync/crypto';
+import { useSocial } from '../social/api';
+import { CoWriters, userColor } from './CoWriters';
 import { db, saveSceneContent, takeSnapshot, type Scene, type Status } from '../db';
 import { editorExtensions, jsonToMarkdown, markdownToJson } from '../editor/extensions';
 import { getSettings, setSettings, useSettings } from '../settings';
@@ -32,10 +42,28 @@ export function EditorPane({ sceneId, secondary, onClose }: { sceneId: string; s
   useEffect(() => { let alive = true; db.scenes.get(sceneId).then((s) => alive && setInitial(s ?? null)); return () => { alive = false; }; }, [sceneId]);
   if (initial === undefined) return <div className="pane" />;
   if (initial === null) return <div className="pane empty-state">This scene no longer exists.</div>;
-  return <PaneInner key={sceneId} scene={initial} secondary={secondary} onClose={onClose} />;
+  return <SharedSwitch scene={initial} secondary={secondary} onClose={onClose} />;
 }
 
-function PaneInner({ scene, secondary, onClose }: { scene: Scene; secondary?: boolean; onClose?: () => void }) {
+/** In a shared project the scene opens in live co-writing mode */
+function SharedSwitch({ scene, secondary, onClose }: { scene: Scene; secondary?: boolean; onClose?: () => void }) {
+  const roles = useSharedRoles();
+  const collab = !!roles[scene.projectId] && !!sharedKey(scene.projectId);
+  return <PaneInner key={scene.id + (collab ? ':live' : '')} scene={scene} collab={collab} secondary={secondary} onClose={onClose} />;
+}
+
+function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene; collab?: boolean; secondary?: boolean; onClose?: () => void }) {
+  // in live mode, start from the newest saved copy (the one we were handed may be older)
+  const [scene] = useState(scene0);
+  const me = useSocial().me;
+  const co = useMemo(() => {
+    if (!collab) return null;
+    const key = sharedKey(scene.projectId); if (!key) return null;
+    const schema = getSchema(editorExtensions(() => false, () => false, undefined, []));
+    const doc = sceneDoc(scene.ystate, scene.content, schema);
+    return { doc, awareness: new Awareness(doc), key };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [liveStatus, setLiveStatus] = useState<LiveStatus | null>(null);
   const s = useSettings();
   const nav = useNav();
   const live = useLiveQuery(() => db.scenes.get(scene.id), [scene.id]);
@@ -70,8 +98,12 @@ function PaneInner({ scene, secondary, onClose }: { scene: Scene; secondary?: bo
   }, []);
 
   const editor = useEditor({
-    extensions: editorExtensions(() => focusRef.current, () => trackRef.current, { names: () => namesRef.current, enabled: () => cardsRef.current }),
-    content: scene.content as object,
+    extensions: editorExtensions(() => focusRef.current, () => trackRef.current, { names: () => namesRef.current, enabled: () => cardsRef.current },
+      co ? [
+        Collaboration.configure({ document: co.doc, field: FIELD }),
+        CollaborationCaret.configure({ provider: { awareness: co.awareness }, user: { name: me ? (me.display_name || me.username) : 'Someone', color: userColor(me?.id ?? 'x') } }),
+      ] : undefined),
+    content: co ? undefined : (scene.content as object),
     editorProps: { attributes: { spellcheck: String(s.spellcheck), class: 'prose', role: 'textbox', 'aria-multiline': 'true', 'aria-label': `Text of ${scene.title}` } },
     onCreate: ({ editor }) => { const st = textStats(editor.getText({ blockSeparator: '\n\n' })); setStats(st); startWords.current = st.words; lastWords.current = st.words; },
     onUpdate: ({ editor, transaction }) => {
@@ -79,11 +111,12 @@ function PaneInner({ scene, secondary, onClose }: { scene: Scene; secondary?: bo
       setStats(st);
       const grew = st.words - lastWords.current;
       lastWords.current = st.words;
-      if (grew > 0 && !transaction.getMeta('history$')) { typedSession.current += grew; typedUnsaved.current += grew; }
+      const fromCoWriter = !!transaction.getMeta(ySyncPluginKey)?.isChangeOrigin;
+      if (grew > 0 && !transaction.getMeta('history$') && !fromCoWriter) { typedSession.current += grew; typedUnsaved.current += grew; }
       setSave('unsaved');
       pending.current = async () => {
         setSave('saving');
-        try { const typed = typedUnsaved.current; typedUnsaved.current = 0; await saveSceneContent(scene.id, editor.getJSON(), st.words, typed); setSave('saved'); }
+        try { const typed = typedUnsaved.current; typedUnsaved.current = 0; await saveSceneContent(scene.id, editor.getJSON(), st.words, typed, co ? encodeDoc(co.doc) : undefined); setSave('saved'); }
         catch (err) { console.error(err); setSave('error'); toast('Could not save! Your text is still in the editor — try exporting a backup.'); }
       };
       window.clearTimeout(timer.current);
@@ -95,6 +128,17 @@ function PaneInner({ scene, secondary, onClose }: { scene: Scene; secondary?: bo
       if (focusRef.current) editor.view.dispatch(editor.state.tr.setMeta('focusRefresh', true));
     },
   });
+
+  // live co-writing: join the scene's channel, show who's here
+  useEffect(() => {
+    if (!co) return;
+    const leave = joinLive({ sceneId: scene.id, doc: co.doc, awareness: co.awareness, key: co.key, onStatus: setLiveStatus });
+    return () => { leave(); window.setTimeout(() => co.doc.destroy(), 200); };
+  }, [co, scene.id]);
+  useEffect(() => {
+    if (!co || !editor || editor.isDestroyed || !me) return;
+    editor.commands.updateUser({ name: me.display_name || me.username, color: userColor(me.id) });
+  }, [co, editor, me]);
 
   // Save on unmount, tab hide, and window close.
   useEffect(() => {
@@ -123,7 +167,14 @@ function PaneInner({ scene, secondary, onClose }: { scene: Scene; secondary?: bo
   useEffect(() => {
     if (!editor) return;
     const onRemote = async (e: Event) => {
-      if ((e as CustomEvent).detail !== scene.id || pending.current) return;
+      if ((e as CustomEvent).detail !== scene.id) return;
+      if (co) {
+        // live mode: merge the saved copy into the open document (no jumping, nothing lost)
+        const f = await db.scenes.get(scene.id);
+        if (f?.ystate) Y.applyUpdate(co.doc, unb64(f.ystate), REMOTE);
+        return;
+      }
+      if (pending.current) return;
       const fresh = await db.scenes.get(scene.id);
       if (!fresh || pending.current || editor.isDestroyed) return;
       if (JSON.stringify(editor.getJSON()) === JSON.stringify(fresh.content)) return;
@@ -188,6 +239,7 @@ function PaneInner({ scene, secondary, onClose }: { scene: Scene; secondary?: bo
             <span className="muted">{chapter?.title}</span><span className="muted"> / </span>
             <input className="title-input" value={title} onChange={(e) => db.scenes.update(scene.id, { title: e.target.value })} aria-label="Scene title" />
           </div>
+          {co && <CoWriters awareness={co.awareness} status={liveStatus} />}
           <div className="row gap-s">
             <button className={'icon-btn' + (s.focusMode ? ' on' : '')} title="Focus mode (dim other paragraphs)" onClick={() => setSettings({ focusMode: !s.focusMode })}><Crosshair size={16} /></button>
             <button className={'icon-btn' + (s.typewriter ? ' on' : '')} title="Typewriter mode (keep line centred)" onClick={() => setSettings({ typewriter: !s.typewriter })}><AlignVerticalJustifyCenter size={16} /></button>
