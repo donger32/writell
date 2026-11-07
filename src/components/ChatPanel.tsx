@@ -7,7 +7,7 @@ import {
 import { db } from '../db';
 import { go } from '../nav';
 import { currentUserId, useSharedRoles } from '../sync/engine';
-import { useSocial, block, unblock, getProfiles, isBanned, type Profile } from '../social/api';
+import { useSocial, block, unblock, getProfiles, isBanned, isChatMuted, type Profile } from '../social/api';
 import { listMembers, ROLE_LABEL, type Member } from '../social/share';
 import {
   canModerate, chatVisible, editMessage, ensureReadMark, markRead, post, refreshChat, removeMessage, setResolved, useChat, type Msg,
@@ -110,6 +110,7 @@ export function ChatPanel({ projectId, compact, onClose, focusId }: { projectId:
   const visibleMsgs = chat.msgs.filter((m) => (filter === 'all' || m.kind === filter) && (filter !== 'comment' || showResolved || !m.resolved));
   const openComments = chat.msgs.filter((m) => m.kind === 'comment' && !m.resolved).length;
   const banned = isBanned(social.me);
+  const chatMuted = !banned && isChatMuted(social.me);
 
   const send = async () => {
     const t = text.trim(); if (!t || sending) return;
@@ -286,7 +287,7 @@ export function ChatPanel({ projectId, compact, onClose, focusId }: { projectId:
             <button className="icon-btn sm" aria-label="Cancel reply" onClick={() => setReplyTo(null)}><X size={12} /></button>
           </div>
         )}
-        {banned ? <p className="small danger-text">You’re banned from chatting until {new Date(social.me!.banned_until!).toLocaleString()}{social.me?.ban_reason ? `: ${social.me.ban_reason}` : ''}.</p> : (
+        {chatMuted ? <p className="small danger-text">A staff member muted you in chats until {new Date(social.me!.chat_muted_until!).toLocaleString()}.</p> : banned ? <p className="small danger-text">You’re banned from chatting until {new Date(social.me!.banned_until!).toLocaleString()}{social.me?.ban_reason ? `: ${social.me.ban_reason}` : ''}.</p> : (
           <div className="compose-row">
             <textarea ref={input} className="input chat-input" rows={1} value={text} placeholder={replyTo ? 'Write a reply…' : `Message ${project?.title ?? 'the project'}`} aria-label="Message"
               onChange={(e) => { setText(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(160, e.target.scrollHeight) + 'px'; }}

@@ -48,7 +48,7 @@ const friendly = (e: { message?: string; code?: string } | null) => {
   if (!e) return null;
   const m = e.message ?? '';
   if (/writell_messages|schema cache|PGRST20/.test(m)) return new Error('Chat isn’t set up in Supabase yet: run the stage D setup script.');
-  if (/row-level security/.test(m)) return new Error(getSocial().me?.banned_until && Date.parse(getSocial().me!.banned_until!) > Date.now() ? 'You’re banned from chatting right now.' : 'You’re not allowed to do that here.');
+  if (/row-level security/.test(m)) { const p = getSocial().me; const until = (d?: string | null) => !!d && Date.parse(d) > Date.now(); return new Error(until(p?.banned_until) ? 'You’re banned from chatting right now.' : until(p?.chat_muted_until) ? 'You’re muted in chats right now.' : 'You’re not allowed to do that here.'); }
   if (/fetch|network/i.test(m)) return new Error('Can’t reach the server. Check your internet connection.');
   return new Error(m.replace(/^.*?exception: /, '') || 'Something went wrong.');
 };

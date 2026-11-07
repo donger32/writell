@@ -2,6 +2,14 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.16.0 — roles, custom badges, name filter (stage E)
+**Needs `supabase/writell-stage-e.sql` run once.**
+- **Roles & permissions:** the owner makes roles (name, color, order) and ticks what each can do: rename people, lock names, titles & colors, give badges, make badges, ban, manage chats, clear profiles, flagged names, word filter, reserve names, announcements, fun effects, see the log. Admin and Moderator are ready-made roles you can change or delete. Staff only see the tabs and buttons their role allows, and the database checks every action.
+- **Custom badges** (Badges tab): your own emoji, name, color and description. The built-in badges are gone.
+- **Manage chats:** mute someone in every chat for a while, or remove everything they wrote in chats (without reading it: it stays encrypted).
+- **Name filter:** usernames and display names with blocked words (slurs, swearing, dictators…) can't be picked, also with tricks like f.u.c.k, h1tl3r or fuuuck. Innocent words that contain one (Scunthorpe, cocktail, assassin) are on an allow list.
+- **Flags tab** (staff only): names that contain a "flag" word or are one letter off a blocked word, with Looks fine / Rename / Ban, and a button to check everyone's names again. The word lists and a name tester are under Names & words.
+
 ## Changes in v0.15.2
 **Needs `supabase/writell-special-names.sql` run once.**
 - Special usernames: admins can give anyone a username of 1–24 characters with capitals, symbols or emoji (Z, ★Cleo★, 🐐ben). People can't pick these themselves, but keep them when they edit their profile. Typing a special name exactly in Find people finds it. Reserved names can be special too.

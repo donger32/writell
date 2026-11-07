@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Megaphone, PartyPopper, TriangleAlert, Heart, X, Ban } from 'lucide-react';
 import { onFx, useAnnouncements, type Fx } from '../social/effects';
-import { getProfiles, isBanned, useSocial, type Profile } from '../social/api';
+import { getProfiles, isBanned, isChatMuted, useSocial, type Profile } from '../social/api';
 import { Avatar } from './story/common';
 import { UserName, displayName } from './UserName';
 import { toast } from './ui';
@@ -26,6 +26,11 @@ export function Announcements() {
       {isBanned(me) && (
         <div className="ann-bar warning" role="status"><Ban size={15} />
           <span className="grow">You’re banned from chatting and friend requests until <b>{new Date(me!.banned_until!).toLocaleString()}</b>{me!.ban_reason ? `: ${me!.ban_reason}` : ''}. Your own writing and sync still work.</span>
+        </div>
+      )}
+      {!isBanned(me) && isChatMuted(me) && (
+        <div className="ann-bar warning" role="status"><Ban size={15} />
+          <span className="grow">A staff member muted you in chats until <b>{new Date(me!.chat_muted_until!).toLocaleString()}</b>. Everything else works as normal.</span>
         </div>
       )}
       {show.map((a) => {

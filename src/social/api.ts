@@ -9,23 +9,32 @@ import { decryptJSON, encryptJSON } from '../sync/crypto';
 export interface Profile {
   id: string; username: string; display_name: string; bio: string; avatar: string | null; public_key: string | null;
   // set by admins (stage D)
-  staff?: 'owner' | 'admin' | 'mod' | null; badges?: string[]; name_color?: string | null; title?: string | null;
-  name_locked?: boolean; banned_until?: string | null; ban_reason?: string | null;
+  staff?: string | null; badges?: string[]; name_color?: string | null; title?: string | null;
+  name_locked?: boolean; banned_until?: string | null; ban_reason?: string | null; chat_muted_until?: string | null;
 }
 const BASIC = 'id,username,display_name,bio,avatar,public_key';
-const FULL = BASIC + ',staff,badges,name_color,title,name_locked,banned_until,ban_reason';
-let extCols = true; // false while the stage D setup script hasn't been run
-let extCheckedAt = 0;
-/** Run a profile query with the newer columns, falling back if the database doesn't have them yet */
+// newest first: stage E adds chat mutes, stage D the admin fields
+const LEVELS = [BASIC + ',staff,badges,name_color,title,name_locked,banned_until,ban_reason,chat_muted_until', BASIC + ',staff,badges,name_color,title,name_locked,banned_until,ban_reason', BASIC];
+let level = 0;
+let levelCheckedAt = 0;
+/** Run a profile query with the newest columns the database has, falling back if a setup script hasn't been run yet */
 export async function profileQuery<T>(run: (cols: string) => PromiseLike<{ data: T; error: { message?: string; code?: string } | null }>): Promise<{ data: T; error: { message?: string; code?: string } | null }> {
-  // look again every minute, so running the setup script while Writell is open works without a restart
-  if (!extCols && Date.now() - extCheckedAt > 60_000) extCols = true;
-  if (extCols) {
-    const r = await run(FULL);
-    if (!r.error || !/column|42703|PGRST204/.test((r.error.message ?? '') + r.error.code)) return r;
-    extCols = false; extCheckedAt = Date.now();
+  // look again every minute, so running a setup script while Writell is open works without a restart
+  if (level > 0 && Date.now() - levelCheckedAt > 60_000) level = 0;
+  for (;;) {
+    const r = await run(LEVELS[level]);
+    if (!r.error || level === LEVELS.length - 1 || !/column|42703|PGRST204/.test((r.error.message ?? '') + r.error.code)) return r;
+    level++; levelCheckedAt = Date.now();
   }
-  return run(BASIC);
+}
+export const isChatMuted = (p?: Profile | null) => !!p?.chat_muted_until && Date.parse(p.chat_muted_until) > Date.now();
+/** Is a name allowed? 'block' = no, 'flag' = yes but staff will look at it, null = fine (or the filter isn't set up) */
+export async function nameProblem(name: string): Promise<'block' | 'flag' | null> {
+  if (!name.trim()) return null;
+  const { data, error } = await sb().rpc('writell_name_check', { n: name });
+  if (error) return null;
+  const rows = (data ?? []) as { level: string; how: string }[];
+  return rows.some((r) => r.level === 'block' && r.how === 'contains') ? 'block' : rows.length ? 'flag' : null;
 }
 export const isBanned = (p?: Profile | null) => !!p?.banned_until && Date.parse(p.banned_until) > Date.now();
 export interface Friendship { requester: string; addressee: string; status: 'pending' | 'accepted'; created_at: string; accepted_at: string | null }
@@ -60,7 +69,7 @@ const friendly = (e: { message?: string; code?: string } | null) => {
   const m = e.message ?? '';
   if (e.code === '23505' && /username/.test(m)) return new Error('That username is taken. Try another.');
   if (/writell_profiles|writell_friendships|schema cache|PGRST20/.test(m)) return new Error('Friends aren’t set up in Supabase yet: run the stage A setup script.');
-  if (/reserved|locked your name|banned/i.test(m)) return new Error(m.replace(/^.*?: /, ''));
+  if (/reserved|locked your name|banned|allowed/i.test(m)) return new Error(m.replace(/^.*?: /, ''));
   if (/fetch|network/i.test(m)) return new Error('Can’t reach the server. Check your internet connection.');
   return new Error(m || 'Something went wrong.');
 };
@@ -255,7 +264,7 @@ async function heartbeat() {
 /** Called once at start-up: keeps friends, requests and online status fresh while Writell is open */
 export function startSocial() {
   if (timer) return;
-  const tick = () => { void refreshSocial().then(heartbeat); };
+  const tick = () => { void refreshSocial().then(heartbeat); void import('./catalog').then((c) => c.loadCatalog()); };
   window.setTimeout(tick, 2500);
   timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refreshSocial(); }, 45_000);
   beat = window.setInterval(() => { void heartbeat(); }, 60_000);

@@ -1200,3 +1200,40 @@ body.fx-shake .app { animation: fx-shake .75s cubic-bezier(.36, .07, .19, .97); 
 .main > :not(.phone-bar):not(.exit-reading):not(.ann-bar) { flex: 1; min-height: 0; }
 .main > .ann-bar { flex: none !important; }
 .main > .page { width: 100%; }
+
+/* ===================== roles, custom badges, name filter (0.16) ===================== */
+.admin-crest { border-width: 1px; border-style: solid; }
+.role-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+.role-pick button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 99px; border: 1px solid var(--border); font-size: 12.5px; color: var(--rc, var(--muted)); }
+.role-pick button.on { background: color-mix(in srgb, var(--rc, var(--accent)) 16%, transparent); border-color: var(--rc, var(--accent)); color: var(--rc, var(--text)); font-weight: 600; }
+.role-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.role-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+.role-name { display: inline-flex; align-items: center; gap: 5px; font-weight: 650; flex: none; min-width: 120px; }
+.perm-head { margin: 4px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.perm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
+.perm { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--border); cursor: var(--cur-pointer, pointer); }
+.perm input { margin-top: 3px; }
+.perm.on { background: var(--active); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.badge-maker { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--border); max-width: 560px; }
+.badge-preview { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 99px; border: 1px solid var(--border); background: var(--hover); font-weight: 600; }
+.badge-preview span { font-size: 18px; }
+.emoji-input { width: 64px; text-align: center; font-size: 18px; }
+.color-pick { width: 30px; height: 28px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: none; cursor: var(--cur-pointer, pointer); }
+.badge-admin-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.badge-admin-list li { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 8px; }
+.badge-admin-list li:hover { background: var(--hover); }
+.flag-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.flag-item { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--danger); }
+.flag-item.ok, .flag-item.fixed { border-left-color: #5fbf8f; opacity: .7; }
+.sec-title { margin: 6px 0 0; font-size: 15px; }
+.name-test { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: 640px; }
+.warn-text { color: #e8b14a; }
+.word-group { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.word-group summary { cursor: var(--cur-pointer, pointer); margin-bottom: 6px; }
+.word-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 9px; border-radius: 99px; font-size: 12px; border: 1px solid var(--border); }
+.word-chip.block { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.word-chip.flag { border-color: color-mix(in srgb, #e8b14a 45%, var(--border)); }
+.word-chip.allow { border-color: color-mix(in srgb, #5fbf8f 45%, var(--border)); }
+.word-chip button { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; color: var(--muted); }
+.word-chip button:hover { background: var(--hover); color: var(--text); }
+@media (max-width: 700px) { .role-row { flex-wrap: wrap; } .role-name { min-width: 0; } }

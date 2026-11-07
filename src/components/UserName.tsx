@@ -1,18 +1,21 @@
 /* Someone's name with their admin-given extras: color, staff mark, badges, title */
-import { Crown, Gavel, ShieldCheck } from 'lucide-react';
+import { Crown, ShieldCheck } from 'lucide-react';
 import type { Profile } from '../social/api';
-import { STAFF_LABEL, badge, type Staff } from '../social/badges';
+import { badgeOf, roleOf, useCatalog } from '../social/catalog';
 
 export const displayName = (p?: Pick<Profile, 'display_name' | 'username'> | null) => (p ? p.display_name || p.username : 'Someone');
 
 export function StaffMark({ staff, size = 13 }: { staff?: string | null; size?: number }) {
-  if (!staff) return null;
-  const I = staff === 'owner' ? Crown : staff === 'admin' ? ShieldCheck : Gavel;
-  return <span className={'staff-mark ' + staff} title={STAFF_LABEL[staff as Staff]} aria-label={STAFF_LABEL[staff as Staff]}><I size={size} /></span>;
+  useCatalog();
+  const r = roleOf(staff);
+  if (!staff || !r) return null;
+  const I = staff === 'owner' ? Crown : ShieldCheck;
+  return <span className="staff-mark" style={{ color: r.color }} title={r.name} aria-label={r.name}><I size={size} /></span>;
 }
 
 export function Badges({ ids, max = 3 }: { ids?: string[]; max?: number }) {
-  const list = (ids ?? []).map(badge).filter(Boolean);
+  useCatalog();
+  const list = (ids ?? []).map(badgeOf).filter(Boolean);
   if (!list.length) return null;
   return (
     <span className="badges">

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Ban, Check, Search, UserMinus, UserPlus, Users, X, Pencil, Cloud } from 'lucide-react';
 import {
-  accept, block, friendsSince, getProfile, isBanned, isOnline, refreshSocial, relationTo, saveProfile, searchPeople, sendRequest, setShowOnline,
+  accept, block, friendsSince, getProfile, isBanned, isOnline, nameProblem, refreshSocial, relationTo, saveProfile, searchPeople, sendRequest, setShowOnline,
   unblock, unfriend, usernameTaken, useSocial, USERNAME_RE, type Profile,
 } from '../social/api';
 import { useSyncStatus } from '../sync/engine';
@@ -12,7 +12,7 @@ import { pickImage } from '../entities';
 import { Modal, confirmDialog, toast } from './ui';
 import { timeAgo } from '../util';
 import { UserName } from './UserName';
-import { STAFF_LABEL, badge } from '../social/badges';
+import { badgeOf, roleOf, useCatalog } from '../social/catalog';
 import { MuteButton } from './MuteButton';
 
 type Tab = 'friends' | 'requests' | 'find' | 'blocked';
@@ -158,7 +158,7 @@ function RelationButton({ p }: { p: Profile }) {
 }
 
 export function ProfileModal({ p: initial, onClose }: { p: Profile; onClose: () => void }) {
-  useSocial();
+  useSocial(); useCatalog();
   const [p, setP] = useState(initial);
   useEffect(() => { void getProfile(initial.id).then((x) => x && setP(x)); }, [initial.id]);
   const r = relationTo(p.id);
@@ -171,13 +171,13 @@ export function ProfileModal({ p: initial, onClose }: { p: Profile; onClose: () 
           <span className="avatar-wrap"><Avatar name={nameOf(p)} image={p.avatar ?? undefined} size={84} />{r === 'friend' && <span className={'online-dot big' + (online ? ' on' : '')} />}</span>
           <div className="col" style={{ minWidth: 0 }}>
             <strong className="me-name ellipsis"><UserName p={p} max={0} title={false} /></strong>
-            <span className="muted">@{p.username}{p.staff ? ` · ${STAFF_LABEL[p.staff]}` : ''}</span>
+            <span className="muted">@{p.username}{roleOf(p.staff) ? ` · ${roleOf(p.staff)!.name}` : ''}</span>
             {p.title && <span className="u-title big">{p.title}</span>}
             {isBanned(p) && <span className="small danger-text">Banned until {new Date(p.banned_until!).toLocaleDateString()}</span>}
             {r === 'friend' && <span className="muted small">{online ? 'Online now' : 'Offline'}{since ? ` · friends since ${new Date(since).toLocaleDateString()}` : ''}</span>}
           </div>
         </div>
-        {!!p.badges?.length && <div className="badge-list">{p.badges.map(badge).filter(Boolean).map((b) => <span key={b!.id} className="badge-chip">{b!.emoji} {b!.label}</span>)}</div>}
+        {!!p.badges?.length && <div className="badge-list">{p.badges.map(badgeOf).filter(Boolean).map((b) => <span key={b!.id} className="badge-chip" title={b!.description ?? undefined} style={b!.color ? { borderColor: b!.color, color: b!.color } : undefined}>{b!.emoji} {b!.label}</span>)}</div>}
         {p.bio && <p className="profile-bio">{p.bio}</p>}
         <div className="row gap-s wrap">
           {r === 'friend' ? (
@@ -217,8 +217,18 @@ export function ProfileEditor({ first, onDone }: { first?: boolean; onDone: () =
     const t = window.setTimeout(async () => { const v = await usernameTaken(username).catch(() => null); if (n === check.current) setTaken(v); }, 350);
     return () => window.clearTimeout(t);
   }, [username]); // eslint-disable-line react-hooks/exhaustive-deps
+  // the name filter: tell people straight away if a name isn't allowed
+  const [bad, setBad] = useState<{ u: boolean; d: boolean }>({ u: false, d: false });
+  useEffect(() => {
+    const t = window.setTimeout(async () => {
+      const [u, d] = await Promise.all([username === s.me?.username ? null : nameProblem(username), display === s.me?.display_name ? null : nameProblem(display)]);
+      setBad({ u: u === 'block', d: d === 'block' });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [username, display]); // eslint-disable-line react-hooks/exhaustive-deps
   const save = async () => {
     setMsg('');
+    if (bad.u || bad.d) return setMsg('That name isn’t allowed. Please pick another.');
     if (!valid) return setMsg('Usernames are 3–20 characters: lowercase letters, numbers and _.');
     if (taken) return setMsg('That username is taken. Try another.');
     setBusy(true);
@@ -239,10 +249,11 @@ export function ProfileEditor({ first, onDone }: { first?: boolean; onDone: () =
         <div className="uname-input"><span className="muted">@</span><input className="input" value={username} maxLength={20} autoCapitalize="none" autoCorrect="off" spellCheck={false}
           onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} placeholder="e.g. mara_writes" /></div>
         <span className={'small ' + (taken ? 'danger-text' : taken === false ? 'acct-ok' : 'muted')}>
-          {special ? '✨ A special username from an admin' : !username ? '3–20 characters: letters, numbers and _' : !valid ? 'At least 3 characters' : taken ? 'Taken' : taken === false ? 'Available' : ' '}
+          {bad.u ? <span className="danger-text">That username isn’t allowed</span> : special ? '✨ A special username from an admin' : !username ? '3–20 characters: letters, numbers and _' : !valid ? 'At least 3 characters' : taken ? 'Taken' : taken === false ? 'Available' : ' '}
         </span>
       </label>
-      <label className="sfield"><span>Display name</span><input className="input" value={display} maxLength={40} onChange={(e) => setDisplay(e.target.value)} placeholder="What friends see, e.g. Mara Quill" /></label>
+      <label className="sfield"><span>Display name</span><input className="input" value={display} maxLength={40} onChange={(e) => setDisplay(e.target.value)} placeholder="What friends see, e.g. Mara Quill" />
+        {bad.d && <span className="small danger-text">That name isn’t allowed</span>}</label>
       <label className="sfield"><span>About you (optional)</span><textarea className="input" rows={3} maxLength={300} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Fantasy writer, currently drafting book two…" /></label>
       {!first && <label className="check"><input type="checkbox" checked={s.showOnline} onChange={(e) => run(() => setShowOnline(e.target.checked))} /> Let my friends see when I'm online</label>}
       {msg && <p className="small danger-text">{msg}</p>}

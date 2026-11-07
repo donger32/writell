@@ -42,3 +42,4 @@ Settings → Account & sync. Uses the Supabase project in `src/sync/config.ts`; 
 3. `supabase/writell-stage-b.sql`: shared projects
 4. `supabase/writell-stage-d.sql`: project chat & admin tools (last line: your username)
 5. `supabase/writell-special-names.sql`: special usernames admins can hand out
+6. `supabase/writell-stage-e.sql`: roles & permissions, custom badges, name filter & flags, chat mutes
