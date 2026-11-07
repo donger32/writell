@@ -2,6 +2,13 @@ import { useEffect, useState } from 'react';
 import { Menu, Search } from 'lucide-react';
 import { UpdateBanner } from './components/UpdateBanner';
 import { FriendsView } from './components/FriendsView';
+import { ChatView } from './components/ChatPanel';
+import { AdminView } from './components/AdminView';
+import { Announcements, EffectsLayer } from './components/Effects';
+import { isChatVisible, onNewMessages } from './social/chat';
+import { setMyPlace } from './social/presence';
+import { isMuted } from './social/mute';
+import { getProfiles, getSocial } from './social/api';
 import { JoinDialog, ShareDialog, takeInviteFromAddress } from './components/ShareDialog';
 import { useSharedRoles, useSyncStatus } from './sync/engine';
 import { Eye } from 'lucide-react';
@@ -37,7 +44,7 @@ import { ExportDialog } from './components/ExportDialog';
 
 const PHONE_TITLES: Record<string, string> = {
   home: 'Writell', projects: 'Projects', project: 'Overview', write: 'Write', characters: 'Character', world: 'Worldbuilding', notes: 'Notes',
-  search: 'Search', statistics: 'Statistics', trash: 'Trash', friends: 'Friends', tasks: 'Tasks', family: 'Tree', maps: 'Map', relationships: 'Relation', timelines: 'Timeline', revision: 'Revision',
+  search: 'Search', statistics: 'Statistics', trash: 'Trash', friends: 'Friends', chat: 'Chat', admin: 'Admin', tasks: 'Tasks', family: 'Tree', maps: 'Map', relationships: 'Relation', timelines: 'Timeline', revision: 'Revision',
 };
 
 export default function App() {
@@ -60,6 +67,22 @@ export default function App() {
     window.addEventListener('writell:shared-added', added); window.addEventListener('writell:shared-removed', removed);
     return () => { window.removeEventListener('writell:shared-added', added); window.removeEventListener('writell:shared-removed', removed); };
   }, []);
+  // tell co-writers where you are; pop up new chat messages you aren't looking at
+  const placePid = 'projectId' in route && roles[route.projectId] ? route.projectId : null;
+  const placeScene = route.view === 'write' ? route.sceneId : null;
+  useEffect(() => { setMyPlace(placePid, placeScene); }, [placePid, placeScene]);
+  useEffect(() => onNewMessages(async (pid, msgs) => {
+    if (isChatVisible(pid)) return;
+    const shown = msgs.filter((m) => m.kind !== 'activity' && !isMuted(m.author) && !getSocial().blocked.some((b) => b.id === m.author));
+    if (!shown.length) return;
+    const m = shown[shown.length - 1];
+    const who = (await getProfiles([m.author])).get(m.author);
+    const p = await db.projects.get(pid);
+    const name = who ? who.display_name || who.username : 'Someone';
+    const text = m.body?.text ?? '';
+    toast(shown.length > 1 ? `${shown.length} new messages in “${p?.title ?? 'a shared project'}”` : `${name}${m.kind === 'comment' ? ' commented' : ''} in “${p?.title ?? 'chat'}”: ${text.length > 80 ? text.slice(0, 80) + '…' : text}`,
+      { label: 'Open', run: () => go({ view: 'chat', projectId: pid, focusId: m.id }) });
+  }), []);
   const viewRole = 'projectId' in route ? roles[route.projectId] : undefined;
   const readOnly = viewRole === 'viewer' || viewRole === 'commenter';
 
@@ -161,7 +184,7 @@ export default function App() {
       <a href="#main-content" className="skip-link" onClick={(e) => { e.preventDefault(); (document.querySelector('.prose, #main-content') as HTMLElement | null)?.focus(); }}>Skip to content</a>
       <main className="main" id="main-content" tabIndex={-1}>
         <UpdateBanner />
-        {readOnly && <div className="readonly-bar"><Eye size={14} /> You're a <strong>{viewRole === 'viewer' ? 'Viewer' : 'Commenter'}</strong> in this shared project: you can read everything, but changes you make won't be saved.</div>}
+        {readOnly && route.view !== 'chat' && <div className="readonly-bar"><Eye size={14} /> You're a <strong>{viewRole === 'viewer' ? 'Viewer' : 'Commenter'}</strong> in this shared project: you can read everything{viewRole === 'commenter' ? ', comment on the text' : ''} and chat, but not change the text.</div>}
         {!hideChrome && (
           <div className="phone-bar">
             <button className="icon-btn" aria-label="Menu" aria-expanded={sbOpen} onClick={() => setSbOpen(true)}><Menu size={20} /></button>
@@ -169,6 +192,7 @@ export default function App() {
             <button className="icon-btn" aria-label="Search" onClick={() => setNav({ paletteOpen: true })}><Search size={18} /></button>
           </div>
         )}
+        <Announcements />
         <ErrorBoundary resetKey={JSON.stringify(route)}>
         {route.view === 'home' && <HomeView />}
         {route.view === 'projects' && <ProjectsView filter={route.filter} />}
@@ -180,6 +204,8 @@ export default function App() {
         {route.view === 'statistics' && <StatsView scope={route.scope} />}
         {route.view === 'trash' && <TrashView />}
         {route.view === 'friends' && <FriendsView />}
+        {route.view === 'admin' && <AdminView />}
+        {route.view === 'chat' && <ChatView key={route.projectId} projectId={route.projectId} focusId={route.focusId} />}
         {route.view === 'tasks' && <TasksView projectId={route.projectId} />}
         {route.view === 'family' && <FamilyTreesView projectId={route.projectId} entityId={route.entityId} />}
         {route.view === 'maps' && <MapsView projectId={route.projectId} entityId={route.entityId} />}
@@ -207,6 +233,7 @@ export default function App() {
       {nav.shareFor && <ShareDialog projectId={nav.shareFor} onClose={() => setNav({ shareFor: null })} />}
       {nav.joinLink !== null && <JoinDialog initial={nav.joinLink} onClose={() => setNav({ joinLink: null })} />}
       {nav.quickNote && <QuickNote projectId={'projectId' in route ? route.projectId : null} onClose={() => setNav({ quickNote: false })} />}
+      <EffectsLayer />
       <DialogHost />
       <MenuHost />
       <ToastHost />

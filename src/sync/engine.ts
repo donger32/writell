@@ -138,6 +138,7 @@ const emitShared = () => { sharedSnapshot = Object.fromEntries([...shared].map((
 export const useSharedRoles = () => useSyncExternalStore((l) => { sharedListeners.add(l); return () => sharedListeners.delete(l); }, () => sharedSnapshot, () => sharedSnapshot);
 export const sharedRole = (projectId: string): Role | undefined => shared.get(projectId)?.role;
 export const sharedKey = (projectId: string) => shared.get(projectId)?.key;
+export const sharedProjectIds = () => [...shared.keys()];
 export const canEdit = (projectId: string) => { const r = shared.get(projectId)?.role; return !r || r === 'owner' || r === 'editor'; };
 async function saveShared() {
   await setMeta('shared', [...shared].map(([pid, v]) => ({ pid, role: v.role, key: v.key })));
@@ -425,12 +426,21 @@ function subscribePings() {
     try {
       const ch = sb().channel('writell-p-' + pid, { config: { broadcast: { self: false } } });
       ch.on('broadcast', { event: 'changed' }, () => { window.clearTimeout(pingTimer); pingTimer = window.setTimeout(() => void syncNow(), 600); });
+      for (const ev of PROJECT_EVENTS) ch.on('broadcast', { event: ev }, (m: { payload?: unknown }) => { for (const f of projectListeners) f(pid, ev, m.payload); });
       ch.subscribe();
       channels.set(pid, ch);
     } catch { /* realtime unavailable: the regular check still runs */ }
   }
 }
 function ping(pid: string) { try { void channels.get(pid)?.send({ type: 'broadcast', event: 'changed', payload: {} }); } catch { /* */ } }
+/* other live events between members of a shared project (chat, where people are) */
+const PROJECT_EVENTS = ['chat', 'where'] as const;
+export type ProjectEvent = typeof PROJECT_EVENTS[number];
+const projectListeners = new Set<(pid: string, ev: ProjectEvent, payload: unknown) => void>();
+export function onProjectEvent(f: (pid: string, ev: ProjectEvent, payload: unknown) => void) { projectListeners.add(f); return () => { projectListeners.delete(f); }; }
+export function sendProjectEvent(pid: string, ev: ProjectEvent, payload: unknown = {}) { try { void channels.get(pid)?.send({ type: 'broadcast', event: ev, payload }); } catch { /* */ } }
+/** true when this change comes from a download, not from someone typing here */
+export const isRemoteTx = (tx: unknown) => !!(tx as Record<string, unknown> | undefined)?.[REMOTE];
 void channels; channels = channels;
 
 let syncing: Promise<void> | null = null;

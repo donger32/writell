@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Copy, Crown, Link2, LogOut, Share2, Trash2, UserPlus, X } from 'lucide-react';
 import { Modal, confirmDialog, openMenu, toast } from './ui';
 import { Avatar } from './story/common';
+import { UserName } from './UserName';
 import { db } from '../db';
 import { go, setNav } from '../nav';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -66,7 +67,7 @@ export function ShareDialog({ projectId, onClose }: { projectId: string; onClose
                 <span className="person-main" style={{ cursor: 'default' }}>
                   <Avatar name={name(m)} image={m.profile?.avatar ?? undefined} size={34} />
                   <span className="col" style={{ minWidth: 0 }}>
-                    <strong className="ellipsis">{name(m)}{m.user_id === currentUserId() ? ' (you)' : ''}</strong>
+                    <strong className="ellipsis"><UserName p={m.profile} fallback={name(m)} title={false} />{m.user_id === currentUserId() ? ' (you)' : ''}</strong>
                     <span className="muted small ellipsis">@{m.profile?.username ?? '…'}{m.pending ? ' · joining…' : ''}</span>
                   </span>
                 </span>

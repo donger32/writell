@@ -20,6 +20,8 @@ export type Route =
   | { view: 'statistics'; scope?: string }
   | { view: 'trash' }
   | { view: 'friends' }
+  | { view: 'admin' }
+  | { view: 'chat'; projectId: string; focusId?: string }
   | { view: 'tasks'; projectId: string }
   | { view: 'revision'; projectId: string };
 

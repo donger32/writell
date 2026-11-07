@@ -6,7 +6,25 @@ import { useSyncExternalStore } from 'react';
 import { currentUserId, dataKey, supabaseClient as sb, getSyncStatus } from '../sync/engine';
 import { decryptJSON, encryptJSON } from '../sync/crypto';
 
-export interface Profile { id: string; username: string; display_name: string; bio: string; avatar: string | null; public_key: string | null }
+export interface Profile {
+  id: string; username: string; display_name: string; bio: string; avatar: string | null; public_key: string | null;
+  // set by admins (stage D)
+  staff?: 'owner' | 'admin' | 'mod' | null; badges?: string[]; name_color?: string | null; title?: string | null;
+  name_locked?: boolean; banned_until?: string | null; ban_reason?: string | null;
+}
+const BASIC = 'id,username,display_name,bio,avatar,public_key';
+const FULL = BASIC + ',staff,badges,name_color,title,name_locked,banned_until,ban_reason';
+let extCols = true; // false until the stage D setup script has been run
+/** Run a profile query with the newer columns, falling back if the database doesn't have them yet */
+export async function profileQuery<T>(run: (cols: string) => PromiseLike<{ data: T; error: { message?: string; code?: string } | null }>): Promise<{ data: T; error: { message?: string; code?: string } | null }> {
+  if (extCols) {
+    const r = await run(FULL);
+    if (!r.error || !/column|42703|PGRST204/.test((r.error.message ?? '') + r.error.code)) return r;
+    extCols = false;
+  }
+  return run(BASIC);
+}
+export const isBanned = (p?: Profile | null) => !!p?.banned_until && Date.parse(p.banned_until) > Date.now();
 export interface Friendship { requester: string; addressee: string; status: 'pending' | 'accepted'; created_at: string; accepted_at: string | null }
 export type Relation = 'self' | 'friend' | 'incoming' | 'outgoing' | 'blocked' | 'none';
 
@@ -39,6 +57,7 @@ const friendly = (e: { message?: string; code?: string } | null) => {
   const m = e.message ?? '';
   if (e.code === '23505' && /username/.test(m)) return new Error('That username is taken. Try another.');
   if (/writell_profiles|writell_friendships|schema cache|PGRST20/.test(m)) return new Error('Friends aren’t set up in Supabase yet: run the stage A setup script.');
+  if (/reserved|locked your name|banned/i.test(m)) return new Error(m.replace(/^.*?: /, ''));
   if (/fetch|network/i.test(m)) return new Error('Can’t reach the server. Check your internet connection.');
   return new Error(m || 'Something went wrong.');
 };
@@ -53,7 +72,7 @@ export function refreshSocial(): Promise<void> {
     if (!uid || ph === 'signed-out' || ph === 'needs-recovery') { set({ ...empty, ready: true, signedIn: false }); return; }
     try {
       const [{ data: mine, error: e1 }, { data: fr, error: e2 }, { data: bl, error: e3 }, { data: pres }] = await Promise.all([
-        sb().from('writell_profiles').select('id,username,display_name,bio,avatar,public_key').eq('id', uid).maybeSingle(),
+        profileQuery((c) => sb().from('writell_profiles').select(c).eq('id', uid).maybeSingle()),
         sb().from('writell_friendships').select('requester,addressee,status,created_at,accepted_at'),
         sb().from('writell_blocks').select('blocked'),
         sb().from('writell_presence').select('visible').eq('user_id', uid).maybeSingle(),
@@ -66,9 +85,9 @@ export function refreshSocial(): Promise<void> {
       const ids = [...new Set([...friendships.map(other), ...blockedIds])];
       let people: Profile[] = [];
       if (ids.length) {
-        const { data, error } = await sb().from('writell_profiles').select('id,username,display_name,bio,avatar,public_key').in('id', ids);
+        const { data, error } = await profileQuery((c) => sb().from('writell_profiles').select(c).in('id', ids));
         if (error) throw friendly(error);
-        people = (data ?? []) as Profile[];
+        people = (data ?? []) as unknown as Profile[];
       }
       const byId = new Map(people.map((p) => [p.id, p]));
       const pick = (list: string[]) => list.map((i) => byId.get(i)).filter(Boolean) as Profile[];
@@ -111,7 +130,9 @@ export const friendsSince = (id: string) => state.friendships.find((f) => f.stat
 export const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
 export async function usernameTaken(name: string): Promise<boolean> {
   const { data } = await sb().from('writell_profiles').select('id').eq('username', name).maybeSingle();
-  return !!data && (data as { id: string }).id !== currentUserId();
+  if (data && (data as { id: string }).id !== currentUserId()) return true;
+  const r = await sb().from('writell_reserved').select('name').eq('name', name).maybeSingle();
+  return !r.error && !!r.data;
 }
 export async function saveProfile(p: { username: string; display_name: string; bio: string; avatar: string | null }) {
   const uid = me();
@@ -153,14 +174,29 @@ export async function searchPeople(q: string): Promise<Profile[]> {
   const uname = clean.toLowerCase().replace(/[^a-z0-9_]/g, '');
   const ors = [`display_name.ilike.%${clean}%`];
   if (uname) ors.unshift(`username.ilike.${uname}%`);
-  const { data, error } = await sb().from('writell_profiles').select('id,username,display_name,bio,avatar,public_key').or(ors.join(',')).neq('id', me()).limit(20);
+  const { data, error } = await profileQuery((c) => sb().from('writell_profiles').select(c).or(ors.join(',')).neq('id', me()).limit(20));
   if (error) throw friendly(error);
-  return (data ?? []) as Profile[];
+  return (data ?? []) as unknown as Profile[];
 }
 export async function getProfile(id: string): Promise<Profile | null> {
-  const { data } = await sb().from('writell_profiles').select('id,username,display_name,bio,avatar,public_key').eq('id', id).maybeSingle();
-  return (data as Profile | null) ?? null;
+  const { data } = await profileQuery((c) => sb().from('writell_profiles').select(c).eq('id', id).maybeSingle());
+  return (data as unknown as Profile | null) ?? null;
 }
+/** Several profiles at once (cached for a minute) */
+const pcache = new Map<string, { p: Profile | null; at: number }>();
+export async function getProfiles(ids: string[]): Promise<Map<string, Profile>> {
+  const need = [...new Set(ids)].filter((i) => !pcache.has(i) || Date.now() - pcache.get(i)!.at > 60_000);
+  if (need.length) {
+    const { data } = await profileQuery((c) => sb().from('writell_profiles').select(c).in('id', need));
+    const got = new Map(((data ?? []) as unknown as Profile[]).map((p) => [p.id, p]));
+    for (const i of need) pcache.set(i, { p: got.get(i) ?? pcache.get(i)?.p ?? null, at: Date.now() });
+  }
+  const out = new Map<string, Profile>();
+  for (const i of ids) { const p = pcache.get(i)?.p; if (p) out.set(i, p); }
+  return out;
+}
+export const cachedProfile = (id: string) => pcache.get(id)?.p ?? null;
+export function forgetProfile(id?: string) { if (id) pcache.delete(id); else pcache.clear(); }
 
 /* ---------------- friend actions ---------------- */
 export async function sendRequest(id: string) {

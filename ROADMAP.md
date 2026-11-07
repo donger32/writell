@@ -2,6 +2,17 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.15.0 — project chat & admin tools (stage D)
+**Needs `supabase/writell-stage-d.sql` run once** (then the last line with your username).
+- **Project chat** in every shared project (sidebar → Chat, or the chat button in the editor): messages, replies to anything, comments and "who changed what" in one Discord-style feed, with filters (All / Messages / Comments / Changes). Encrypted with the project key like everything else.
+- **Comments for co-writers:** commenters can finally comment (select text → Comment). Comments are underlined in the writer's colour for everyone, clicking one opens it in the chat, and "Comment on …" in the chat jumps to the text. Editors and owners can resolve or remove anyone's comment; everyone can edit or delete their own messages.
+- **Changes in the chat:** "Mara wrote in “Scene 3” +240 −12 words" and "Ben added scene “The Storm”", grouped so the chat doesn't fill up.
+- **Mute** (folds away someone's messages, no pop-ups; private) and **block** from any name in the chat.
+- **Follow** a co-writer: click their avatar at the top of the editor → Follow. You go to whichever scene they open and their cursor stays on screen; typing yourself stops following.
+- New-message pop-ups with an Open button, and unread counts on Chat.
+- **Admin tools** (sidebar → shield icon, staff only): overview numbers; people search; rename (or 🎲 surprise rename) and lock names; titles; name colours (incl. rainbow); 20 badges; staff ranks (moderator / admin, owner only); bans with reason and length; clear bios/pictures; reserved usernames; announcements (info / party / warning / love); fun effects for one person or everyone (confetti, snow, hearts, earthquake, shout, spotlight); a log of every admin action. The database checks every admin action; admins can't read anyone's writing or chats.
+- Roadmap and README brought up to date.
+
 ## Changes in v0.14.1
 - Co-writers' cursors are easier to see: a bold, full-height line in their colour with their name.
 - Settings → Appearance → Mouse cursor: System, Black or White. Writell's own smooth arrow, text cursor and pointing hand, only inside Writell.
@@ -94,7 +105,7 @@ Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
 ## Spec check (v0.7.0)
 Everything in the original specification is in place except what needs a server:
-- Accounts, friends, sharing, permission levels, real-time co-writing, chat, notifications and other people's activity (Stage 4). The database schema is ready in `supabase/schema.sql`; it needs a Supabase project.
+- ~~Accounts, friends, sharing, permission levels, real-time co-writing, chat, activity (Stage 4)~~: done in 0.10 – 0.15.
 - Hosting the Chromebook (web) version needs somewhere to host it, such as GitHub Pages.
 
 Interpretations worth knowing:
@@ -226,14 +237,17 @@ Interpretations worth knowing:
 | Story timeline: reading order, flashback / flash-forward / time-skip markers, world-time chart | ✅ | |
 | Character timeline: life events with age, relationship changes | ✅ | Age uses "Birth year" on the profile |
 
-## Stage 4 — Collaboration (needs a server)
+## Stage 4 — Collaboration (Supabase)
 | Feature | Status | Notes |
 |---|---|---|
-| Database design with row-level security (accounts, friends, invites, roles, comments, activity) | 🟡 | `supabase/schema.sql`, written but not yet connected to anything |
-| Accounts, friends, sharing, real-time co-writing (Yjs), cursors, chat | ⬜ | **Blocked on infrastructure:** needs a Supabase project (free tier). See below. |
-| Cloud sync between your own PC and Chromebook | ⬜ | Same requirement |
+| Accounts, encrypted cloud sync between your own devices | ✅ | v0.10.0. `supabase/writell-sync.sql`. Encrypted on the device before upload |
+| Profiles, usernames, friends, requests, blocking, online status | ✅ | v0.12.0. `supabase/writell-stage-a.sql` (+ `-fix`) |
+| Sharing projects: roles (owner / editor / commenter / viewer), invite links | ✅ | v0.13.0. `supabase/writell-stage-b.sql`. Each project has its own key |
+| Live co-writing (Yjs), named cursors | ✅ | v0.14.0 – 0.14.1 |
+| Project chat, comment feed, follow a co-writer, mute | ✅ | v0.15.0. `supabase/writell-stage-d.sql` |
+| Admin tools | ✅ | v0.15.0. Same script |
 
-**What's needed to start Stage 4:** create a free Supabase project at supabase.com and run `supabase/schema.sql` in its SQL editor. Then give Claude the project URL and the *anon* (public) key. The service key is never needed in the app. Shared projects only sync if you explicitly share them; everything else stays local.
+The old `supabase/schema.sql` is an early draft and is not used.
 
 ## Stage 5 — Advanced (v0.3.0)
 | Feature | Status | Notes |
@@ -243,7 +257,7 @@ Interpretations worth knowing:
 | Project word target + deadline → words per day needed | ✅ | |
 | Revision history, restore, **compare any two versions** (word diff) | ✅ | |
 | Separate writing / editing modes (Ctrl+E) | ✅ | Revision marks are invisible in writing mode |
-| Paragraph comments with replies & resolve; flag "needs revision" / "unfinished" | ✅ | Single user until Stage 4 |
+| Paragraph comments with replies & resolve; flag "needs revision" / "unfinished" | ✅ | Shared with co-writers in shared projects (0.15.0) |
 | Repeated words, repeated phrases, echoes, -ly adverbs, likely misspelled character names | ✅ | Scene / chapter / project |
 | Editing checklists per chapter (+ your own default) | ✅ | |
 | Unresolved plot threads | ✅ | Notes of type "Plot thread" |
@@ -261,12 +275,11 @@ Interpretations worth knowing:
 - Track changes doesn't record paragraph splits/joins or list changes; those apply immediately.
 - Picture maps are stretched to a grid of 160×160 points for 3D; very fine detail in a picture becomes smoother in 3D (the picture itself stays sharp when shown on the land).
 - In-app automatic backups leave out note attachments to stay small; full backup files include them.
-- **Two devices don't sync automatically yet.** The PC and Chromebook each hold their own copy. Use *Full backup file* → *Restore backup* to move work until Stage 4.
 - Family-tree auto-arrange is a simple generational layout; with remarriages across generations you may need to drag a few cards.
 - PDF export uses the print dialog; pick “Microsoft Print to PDF”.
 - Restoring a backup always creates a **copy** (“… (restored)”), never overwrites. That's deliberate for safety.
 - Raw-Markdown mode: underline has no standard Markdown form, so it is written as `<u>text</u>` (which imports back correctly).
-- Full-text search in Ctrl+K scans scenes on the fly. That's fine for normal novels; Stage 2 adds an index.
+- Full-text search in Ctrl+K scans scenes on the fly. That's fine for normal novels.
 - The interface scale uses CSS `zoom`, which is supported in Chrome/Edge/WebView2 (all targets).
 - The Windows installer is built on Linux (cross-compiled) and is not code-signed, so Windows SmartScreen warns on first install (More info → Run anyway).
 - Portraits and note images are stored inside the project (downscaled), so they are included in backups.

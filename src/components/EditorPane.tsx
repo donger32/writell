@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bold, Italic, Underline, Strikethrough, Highlighter, Heading1, Heading2, Heading3, List, ListOrdered, Quote, Link2, Undo2, Redo2,
-  Code2, PanelRight, X, Search, BookOpenText, Maximize2, Crosshair, AlignVerticalJustifyCenter, Camera, PenLine, MessageSquarePlus, Flag, CircleDashed, Sparkles, GitPullRequestDraft,
+  Code2, PanelRight, X, Search, BookOpenText, Maximize2, Crosshair, AlignVerticalJustifyCenter, Camera, PenLine, MessageSquarePlus, Flag, CircleDashed, Sparkles, GitPullRequestDraft, MessagesSquare,
 } from 'lucide-react';
 import { ReviewPanel, addComment, toggleFlag } from './ReviewPanel';
 import { SprintButton } from './SprintButton';
@@ -21,7 +21,14 @@ import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { sceneDoc, encodeDoc, FIELD, REMOTE } from '../sync/ydoc';
 import { joinLive, Awareness, type LiveStatus } from '../sync/live';
 import { unb64 } from '../sync/crypto';
-import { useSocial } from '../social/api';
+import { useSocial, cachedProfile } from '../social/api';
+import { ChatPanel } from './ChatPanel';
+import { SharedComments, sharedCommentsKey, locate, type Anchor } from '../editor/sharedComments';
+import { getChat, useChat, useUnread, canComment } from '../social/chat';
+import { noteEdit, flushEdit } from '../social/activity';
+import { takeReveal } from '../social/reveal';
+import { unfollow, useFollowing } from '../social/presence';
+import { displayName } from './UserName';
 import { CoWriters, userColor } from './CoWriters';
 import { db, saveSceneContent, takeSnapshot, type Scene, type Status } from '../db';
 import { editorExtensions, jsonToMarkdown, markdownToJson } from '../editor/extensions';
@@ -55,7 +62,8 @@ function SharedSwitch({ scene, secondary, onClose }: { scene: Scene; secondary?:
 function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene; collab?: boolean; secondary?: boolean; onClose?: () => void }) {
   // in live mode, start from the newest saved copy (the one we were handed may be older)
   const [scene] = useState(scene0);
-  const me = useSocial().me;
+  const social = useSocial();
+  const me = social.me;
   const co = useMemo(() => {
     if (!collab) return null;
     const key = sharedKey(scene.projectId); if (!key) return null;
@@ -70,7 +78,14 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
   const chapter = useLiveQuery(() => db.chapters.get(scene.chapterId), [scene.chapterId]);
   const [save, setSave] = useState<SaveState>('saved');
   const [raw, setRaw] = useState<string | null>(null);
-  const [drawer, setDrawer] = useState<null | 'details' | 'history' | 'review' | 'ai'>(nav.editing ? 'review' : null);
+  const [drawer, setDrawer] = useState<null | 'details' | 'history' | 'review' | 'ai' | 'chat'>(nav.editing ? 'review' : null);
+  const [chatFocus, setChatFocus] = useState<string | undefined>(undefined);
+  // shared projects: comments from the chat are underlined in the text
+  const chat = useChat(scene.projectId);
+  const anchors = useRef<Anchor[]>([]);
+  const openChatAt = useRef<(id: string) => void>(() => {});
+  openChatAt.current = (id: string) => { setChatFocus(id); setDrawer('chat'); };
+  const titleRef = useRef(scene.title);
   const [findTerm, setFindTerm] = useState<string | undefined>(undefined);
   const [findOpen, setFindOpen] = useState<false | 'find' | 'replace'>(false);
   const [stats, setStats] = useState(() => textStats(''));
@@ -101,7 +116,8 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
     extensions: editorExtensions(() => focusRef.current, () => trackRef.current, { names: () => namesRef.current, enabled: () => cardsRef.current },
       co ? [
         Collaboration.configure({ document: co.doc, field: FIELD }),
-        CollaborationCaret.configure({ provider: { awareness: co.awareness }, user: { name: me ? (me.display_name || me.username) : 'Someone', color: userColor(me?.id ?? 'x') } }),
+        CollaborationCaret.configure({ provider: { awareness: co.awareness }, user: { name: me ? (me.display_name || me.username) : 'Someone', color: userColor(me?.id ?? 'x'), id: me?.id }, render: caret }),
+        SharedComments(() => anchors.current, (id) => openChatAt.current(id)),
       ] : undefined),
     content: co ? undefined : (scene.content as object),
     editorProps: { attributes: { spellcheck: String(s.spellcheck), class: 'prose', role: 'textbox', 'aria-multiline': 'true', 'aria-label': `Text of ${scene.title}` } },
@@ -113,6 +129,7 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
       lastWords.current = st.words;
       const fromCoWriter = !!transaction.getMeta(ySyncPluginKey)?.isChangeOrigin;
       if (grew > 0 && !transaction.getMeta('history$') && !fromCoWriter) { typedSession.current += grew; typedUnsaved.current += grew; }
+      if (co && grew && !fromCoWriter && transaction.docChanged) noteEdit(scene.projectId, scene.id, titleRef.current, grew);
       setSave('unsaved');
       pending.current = async () => {
         setSave('saving');
@@ -137,8 +154,56 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
   }, [co, scene.id]);
   useEffect(() => {
     if (!co || !editor || editor.isDestroyed || !me) return;
-    editor.commands.updateUser({ name: me.display_name || me.username, color: userColor(me.id) });
+    editor.commands.updateUser({ name: me.display_name || me.username, color: userColor(me.id), id: me.id });
   }, [co, editor, me]);
+  // report what you wrote to the project chat when you leave the scene
+  useEffect(() => () => { if (co) void flushEdit(scene.id); }, [co, scene.id]);
+  // comment highlights follow the chat
+  const anchorKey = co ? JSON.stringify(chat.msgs.filter((m) => m.kind === 'comment' && !m.resolved && m.body?.sceneId === scene.id).map((m) => [m.id, m.body?.quote, m.body?.before, m.author])) : '';
+  useEffect(() => {
+    if (!co || !editor || editor.isDestroyed) return;
+    anchors.current = (JSON.parse(anchorKey || '[]') as [string, string, string, string][]).map(([id, quote, before, author]) => ({ id, quote, before, color: userColor(author) }));
+    editor.view.dispatch(editor.state.tr.setMeta(sharedCommentsKey, true));
+  }, [co, editor, anchorKey]);
+  // "show in the text" from the chat
+  useEffect(() => {
+    if (!co || !editor) return;
+    const run = () => {
+      if (editor.isDestroyed) return;
+      const id = takeReveal(scene.id); if (!id) return;
+      const m = getChat(scene.projectId).byId.get(id);
+      const r = m?.body?.quote ? locate(editor.state.doc, m.body.quote, m.body.before) : null;
+      if (!r) { toast('The commented text has changed, so it can’t be found anymore'); return; }
+      editor.chain().setTextSelection(r).scrollIntoView().run();
+      window.setTimeout(() => { const el = editor.view.dom.querySelector(`[data-scid="${id}"]`); el?.classList.add('flash'); window.setTimeout(() => el?.classList.remove('flash'), 1600); }, 50);
+    };
+    const t = window.setTimeout(run, 250);
+    window.addEventListener('writell:reveal-comment', run);
+    return () => { window.clearTimeout(t); window.removeEventListener('writell:reveal-comment', run); };
+  }, [co, editor, scene.id, scene.projectId]);
+  // following a co-writer: keep their cursor on screen; typing yourself stops following
+  const following = useFollowing();
+  const followHere = co && following && following.pid === scene.projectId ? following.u : null;
+  useEffect(() => {
+    if (!co || !editor || !followHere) return;
+    let raf = 0;
+    const keep = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        if (editor.isDestroyed) return;
+        const el = editor.view.dom.querySelector(`[data-uid="${CSS.escape(followHere)}"]`) as HTMLElement | null;
+        const sc = editor.view.dom.closest('.editor-scroll') as HTMLElement | null;
+        if (!el || !sc) return;
+        const r = el.getBoundingClientRect(), b = sc.getBoundingClientRect();
+        if (r.top < b.top + 80 || r.bottom > b.bottom - 80) sc.scrollBy({ top: r.top - (b.top + b.height / 2), behavior: 'smooth' });
+      });
+    };
+    const stop = (e: KeyboardEvent) => { if ((e.key.length === 1 && !e.ctrlKey && !e.metaKey) || e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete') unfollow(); };
+    co.awareness.on('change', keep); keep();
+    editor.view.dom.addEventListener('keydown', stop);
+    return () => { cancelAnimationFrame(raf); co.awareness.off('change', keep); editor.view.dom.removeEventListener('keydown', stop); };
+  }, [co, editor, followHere]);
+  const unread = useUnread(co ? scene.projectId : null);
 
   // Save on unmount, tab hide, and window close.
   useEffect(() => {
@@ -230,6 +295,9 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
 
   const sessionWords = typedSession.current;
   const title = live?.title ?? scene.title;
+  titleRef.current = title;
+  const commenter = sharedRoles[scene.projectId] === 'commenter' || (readOnly && canComment(scene.projectId));
+  const followName = followHere ? displayName(cachedProfile(followHere) ?? social.friends.find((f) => f.id === followHere)) : '';
 
   return (
     <div className={'pane' + (secondary ? ' secondary' : '')} ref={paneRef}>
@@ -239,7 +307,7 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
             <span className="muted">{chapter?.title}</span><span className="muted"> / </span>
             <input className="title-input" value={title} onChange={(e) => db.scenes.update(scene.id, { title: e.target.value })} aria-label="Scene title" />
           </div>
-          {co && <CoWriters awareness={co.awareness} status={liveStatus} />}
+          {co && <CoWriters awareness={co.awareness} status={liveStatus} projectId={scene.projectId} sceneId={scene.id} onChat={() => setDrawer('chat')} />}
           <div className="row gap-s">
             <button className={'icon-btn' + (s.focusMode ? ' on' : '')} title="Focus mode (dim other paragraphs)" onClick={() => setSettings({ focusMode: !s.focusMode })}><Crosshair size={16} /></button>
             <button className={'icon-btn' + (s.typewriter ? ' on' : '')} title="Typewriter mode (keep line centred)" onClick={() => setSettings({ typewriter: !s.typewriter })}><AlignVerticalJustifyCenter size={16} /></button>
@@ -249,13 +317,23 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
             {s.aiEnabled && <button className={'icon-btn' + (drawer === 'ai' ? ' on' : '')} title="AI assistant (optional)" onClick={() => setDrawer(drawer === 'ai' ? null : 'ai')}><Sparkles size={16} /></button>}
             {!secondary && <button className="icon-btn" title="Reading mode" onClick={() => setNav({ reading: true })}><BookOpenText size={16} /></button>}
             {!secondary && <button className="icon-btn" title="Full screen (F11 / Esc to exit)" onClick={() => toggleFullscreen()}><Maximize2 size={16} /></button>}
+            {co && <button className={'icon-btn chat-btn' + (drawer === 'chat' ? ' on' : '')} title="Project chat: messages, comments and changes" onClick={() => { setChatFocus(undefined); setDrawer(drawer === 'chat' ? null : 'chat'); }}><MessagesSquare size={16} />{unread > 0 && drawer !== 'chat' && <span className="dot-count">{unread > 9 ? '9+' : unread}</span>}</button>}
             <button className={'icon-btn' + (drawer === 'details' ? ' on' : '')} title="Scene details" onClick={() => setDrawer(drawer === 'details' ? null : 'details')}><PanelRight size={16} /></button>
             <button className={'icon-btn' + (drawer === 'history' ? ' on' : '')} title="Revision history" onClick={() => setDrawer(drawer === 'history' ? null : 'history')}><Camera size={16} /></button>
             {onClose && <button className="icon-btn" title="Close split" onClick={() => { flush(); onClose(); }}><X size={16} /></button>}
           </div>
         </div>
       )}
-      {!reading && raw === null && editor && <Toolbar editor={editor} tools={s.toolbar} extra={editing && live ? (
+      {!reading && raw === null && editor && readOnly && (
+        <div className="toolbar ro-tools" onMouseDown={(e) => { if ((e.target as HTMLElement).closest('button')) e.preventDefault(); }}>
+          {commenter ? <>
+            <button className="tb-btn wide" title="Comment on the selected text (Ctrl+Alt+M)" onClick={() => live && addComment(editor, live)}><MessageSquarePlus size={15} /> Comment</button>
+            <span className="muted small">Select some text, then press Comment. Everyone sees it in the chat.</span>
+          </> : <span className="muted small">You can read this project and chat with everyone.</span>}
+        </div>
+      )}
+      {followHere && <div className="follow-pill"><Crosshair size={13} /> Following <b>{followName}</b><button className="link" onClick={unfollow}>Stop</button></div>}
+      {!reading && raw === null && editor && !readOnly && <Toolbar editor={editor} tools={s.toolbar} extra={editing && live ? (
         <>
           <span className="tb-sep" />
           <button className="tb-btn" title="Comment on selection (Ctrl+Alt+M)" onClick={() => addComment(editor, live)}><MessageSquarePlus size={15} /></button>
@@ -281,6 +359,7 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
         </div>
         {drawer === 'details' && live && <DetailsDrawer scene={live} onClose={() => setDrawer(null)} />}
         {drawer === 'review' && editor && live && <ReviewPanel editor={editor} scene={live} onClose={() => setDrawer(null)} onFind={(t) => { setFindTerm(t); setFindOpen('find'); }} />}
+        {drawer === 'chat' && co && <ChatPanel projectId={scene.projectId} compact focusId={chatFocus} onClose={() => setDrawer(null)} />}
         {drawer === 'ai' && editor && live && <AiPanel editor={editor} scene={live} onClose={() => setDrawer(null)} />}
         {drawer === 'history' && editor && <HistoryPanel sceneId={scene.id} getCurrent={() => editor.getJSON()} onRestore={async (content) => {
           await flush(); await takeSnapshot(scene.id, 'before-restore');
@@ -304,6 +383,20 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
       )}
     </div>
   );
+}
+
+/** A co-writer's cursor: a colored line with their name (data-uid lets you follow it) */
+function caret(user: Record<string, unknown>) {
+  const c = document.createElement('span');
+  c.classList.add('collaboration-carets__caret');
+  c.setAttribute('style', `border-color: ${String(user.color)}`);
+  if (user.id) c.dataset.uid = String(user.id);
+  const l = document.createElement('div');
+  l.classList.add('collaboration-carets__label');
+  l.setAttribute('style', `background-color: ${String(user.color)}`);
+  l.textContent = String(user.name ?? '');
+  c.appendChild(l);
+  return c;
 }
 
 function centerCaret(editor: Editor) {

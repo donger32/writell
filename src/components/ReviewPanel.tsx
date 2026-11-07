@@ -12,14 +12,47 @@ import { DEFAULT_CHECKLIST, adverbs, echoes, nameInconsistencies, repeatedPhrase
 import { go } from '../nav';
 import { Check as CheckIcon, X as XIcon } from 'lucide-react';
 import { timeAgo } from '../util';
-import { promptDialog, toast } from './ui';
+import { confirmDialog, promptDialog, toast } from './ui';
+import { currentUserId, sharedRole, useSharedRoles } from '../sync/engine';
+import { canComment, canModerate, post, removeMessage, setResolved, useChat, type Msg } from '../social/chat';
+import { getProfiles, useSocial, type Profile } from '../social/api';
+import { isMuted } from '../social/mute';
+import { locate } from '../editor/sharedComments';
+import { displayName } from './UserName';
+import { userColor } from './CoWriters';
 
 type Tab = 'comments' | 'changes' | 'analysis' | 'checklist';
 
 export interface Reply { id: string; text: string; at: number }
 
+/** The selected range, even when the text can't be edited (read-only co-writers) */
+function selected(editor: Editor): { from: number; to: number } | null {
+  const { from, to, empty } = editor.state.selection;
+  if (!empty) return { from, to };
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.anchorNode || !sel.focusNode || !editor.view.dom.contains(sel.anchorNode)) return null;
+  try {
+    const a = editor.view.posAtDOM(sel.anchorNode, sel.anchorOffset), b = editor.view.posAtDOM(sel.focusNode, sel.focusOffset);
+    return a === b ? null : { from: Math.min(a, b), to: Math.max(a, b) };
+  } catch { return null; }
+}
+
+/** Shared projects: the comment goes to the project chat, anchored to the quoted text */
+async function addSharedComment(editor: Editor, scene: Scene) {
+  if (!canComment(scene.projectId)) { toast('Viewers can read and chat, but not comment. Ask the owner to make you a commenter.'); return; }
+  const r = selected(editor);
+  if (!r) { toast('Select the text you want to comment on first'); return; }
+  const quote = editor.state.doc.textBetween(r.from, r.to, '\n').slice(0, 300);
+  const before = editor.state.doc.textBetween(Math.max(0, r.from - 40), r.from, '\n').split('\n').pop() ?? '';
+  const text = await promptDialog(`Comment on “${quote.length > 50 ? quote.slice(0, 50) + '…' : quote}”`, '', 'Add comment');
+  if (!text?.trim()) return;
+  try { await post(scene.projectId, 'comment', { text: text.trim(), sceneId: scene.id, scene: scene.title, quote, before }); toast('Comment added: everyone sees it in the chat'); }
+  catch (e) { toast((e as Error).message); }
+}
+
 /** Add a comment to the current selection */
 export async function addComment(editor: Editor, scene: Scene) {
+  if (sharedRole(scene.projectId)) return addSharedComment(editor, scene);
   const { from, to, empty } = editor.state.selection;
   if (empty) { toast('Select the text you want to comment on first'); return; }
   const quote = editor.state.doc.textBetween(from, to, ' ').slice(0, 200);
@@ -56,6 +89,61 @@ export function ReviewPanel({ editor, scene, onClose, onFind }: { editor: Editor
 }
 
 function Comments({ editor, scene }: { editor: Editor; scene: Scene }) {
+  const roles = useSharedRoles();
+  if (roles[scene.projectId]) return <SharedCommentList editor={editor} scene={scene} />;
+  return <LocalComments editor={editor} scene={scene} />;
+}
+
+/* comments from the project chat for this scene, with their replies */
+function SharedCommentList({ editor, scene }: { editor: Editor; scene: Scene }) {
+  const chat = useChat(scene.projectId);
+  const social = useSocial();
+  const [showResolved, setShowResolved] = useState(false);
+  const [names, setNames] = useState<Map<string, Profile>>(new Map());
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const uid = currentUserId();
+  const mod = canModerate(scene.projectId);
+  const all = chat.msgs.filter((m) => m.kind === 'comment' && m.body?.sceneId === scene.id);
+  const shown = all.filter((m) => showResolved || !m.resolved);
+  const authors = [...new Set(chat.msgs.map((m) => m.author))].join();
+  useEffect(() => { if (authors) void getProfiles(authors.split(',')).then(setNames); }, [authors]);
+  const nameOf = (id: string) => (id === uid ? 'You' : displayName(names.get(id)));
+  const hidden = (id: string) => id !== uid && (isMuted(id) || social.blocked.some((b) => b.id === id));
+  const select = (m: Msg) => { const r = m.body?.quote ? locate(editor.state.doc, m.body.quote, m.body.before) : null; if (r) editor.chain().setTextSelection(r).scrollIntoView().run(); else toast('The commented text has changed'); };
+  const act = async (fn: () => Promise<unknown>) => { try { await fn(); } catch (e) { toast((e as Error).message); } };
+  return (
+    <div className="col gap-s">
+      <div className="row gap-s">
+        <button className="btn sm" onClick={() => addComment(editor, scene)}><MessageSquare size={13} /> Comment on selection</button>
+        <label className="check small"><input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)} /> Resolved</label>
+      </div>
+      <p className="muted small">Comments in a shared project are shared with everyone in it, and also show up in the project chat.</p>
+      {!shown.length && <p className="muted small">No {showResolved ? '' : 'open '}comments in this scene.</p>}
+      {shown.map((c) => {
+        const replies = chat.msgs.filter((m) => m.reply_to === c.id);
+        const range = c.body?.quote ? locate(editor.state.doc, c.body.quote, c.body.before) : null;
+        return (
+          <div key={c.id} className={'comment' + (c.resolved ? ' resolved' : '')} style={{ borderLeftColor: userColor(c.author) }}>
+            <button className="comment-quote" onClick={() => select(c)} title={range ? 'Show in text' : 'The commented text has changed'}>“{c.body?.quote}”{!range && <em className="muted"> (text changed)</em>}</button>
+            {hidden(c.author) ? <p className="muted small">Comment from someone you muted or blocked</p> : <p>{c.body?.text}</p>}
+            <span className="muted small">{nameOf(c.author)} · {timeAgo(Date.parse(c.created_at))}</span>
+            {replies.map((r) => <div key={r.id} className="reply"><p>{hidden(r.author) ? <em className="muted">Hidden</em> : r.kind === 'activity' ? '' : r.body?.text}</p><span className="muted small">{nameOf(r.author)} · {timeAgo(Date.parse(r.created_at))}</span></div>)}
+            <div className="row gap-s">
+              <input className="input sm grow" placeholder="Reply…" value={drafts[c.id] ?? ''} onChange={(e) => setDrafts({ ...drafts, [c.id]: e.target.value })} onKeyDown={(e) => {
+                const t = (drafts[c.id] ?? '').trim();
+                if (e.key === 'Enter' && t) { setDrafts({ ...drafts, [c.id]: '' }); void act(() => post(scene.projectId, 'msg', { text: t }, c.id)); }
+              }} />
+              {(mod || c.author === uid) && <button className="icon-btn sm" title={c.resolved ? 'Reopen' : 'Resolve'} onClick={() => act(() => setResolved(scene.projectId, c.id, !c.resolved))}>{c.resolved ? <RotateCcw size={13} /> : <Check size={13} />}</button>}
+              {(mod || c.author === uid) && <button className="icon-btn sm" title="Delete comment" onClick={async () => { if (await confirmDialog('Delete this comment?', 'It disappears for everyone.', { danger: true, ok: 'Delete' })) void act(() => removeMessage(scene.projectId, c.id)); }}><Trash2 size={13} /></button>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function LocalComments({ editor, scene }: { editor: Editor; scene: Scene }) {
   const comments = useLiveQuery(() => db.entities.where('[projectId+kind]').equals([scene.projectId, 'comment']).filter((c) => c.fields.sceneId === scene.id).sortBy('createdAt'), [scene.id]);
   const [showResolved, setShowResolved] = useState(false);
   const [, force] = useState(0);

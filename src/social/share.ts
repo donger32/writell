@@ -6,7 +6,7 @@ import { db } from '../db';
 import { adoptShared, canEdit, currentUserId, forgetShared, sharedKey, sharedRole, supabaseClient as sb, syncNow, type Role } from '../sync/engine';
 import { b64url, exportProjectKey, importProjectKey, newProjectKey, openWithSecret, randomBytes, sealFor, sealWithSecret, unb64url } from '../sync/crypto';
 import { WEB_APP_URL } from '../sync/config';
-import { getProfile, type Profile } from './api';
+import { getProfile, profileQuery, type Profile } from './api';
 
 export type { Role };
 export { sharedRole, canEdit };
@@ -52,8 +52,8 @@ export async function listMembers(pid: string): Promise<Member[]> {
   if (error) throw err(error);
   const rows = (data ?? []) as { user_id: string; role: Role; key_grant: string | null }[];
   const ids = rows.map((r) => r.user_id);
-  const { data: profs } = ids.length ? await sb().from('writell_profiles').select('id,username,display_name,bio,avatar,public_key').in('id', ids) : { data: [] };
-  const by = new Map(((profs ?? []) as Profile[]).map((p) => [p.id, p]));
+  const { data: profs } = ids.length ? await profileQuery((c) => sb().from('writell_profiles').select(c).in('id', ids)) : { data: [] };
+  const by = new Map(((profs ?? []) as unknown as Profile[]).map((p) => [p.id, p]));
   const order: Role[] = ['owner', 'editor', 'commenter', 'viewer'];
   return rows.map((r) => ({ user_id: r.user_id, role: r.role, profile: by.get(r.user_id) ?? null, pending: !r.key_grant }))
     .sort((a, b) => order.indexOf(a.role) - order.indexOf(b.role));

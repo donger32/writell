@@ -3,11 +3,13 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import {
   Home, BookOpen, Star, Settings as Cog, HelpCircle, PanelLeftClose, PanelLeftOpen, Plus, ChevronRight,
-  FileText, Pencil, Copy, Trash2, Search, LayoutGrid, Columns2, FolderOpen, Users, Globe, StickyNote, Network, HeartHandshake, GanttChart, BarChart3, Map as MapIcon, Pin, PinOff, ListChecks, Clock,
+  FileText, Pencil, Copy, Trash2, Search, LayoutGrid, MessagesSquare, Shield, Columns2, FolderOpen, Users, Globe, StickyNote, Network, HeartHandshake, GanttChart, BarChart3, Map as MapIcon, Pin, PinOff, ListChecks, Clock,
 } from 'lucide-react';
 import { orderedTools } from '../sidebarTools';
 import { SyncBadge } from './AccountSettings';
 import { useSocial } from '../social/api';
+import { useSharedRoles } from '../sync/engine';
+import { useUnread } from '../social/chat';
 import { useOpenTasks } from './story/Tasks';
 import { Avatar } from './story/common';
 import { openEntity } from './story/links';
@@ -38,6 +40,10 @@ export function Sidebar() {
   const [collapsed, toggle] = useCollapsed();
   const phone = usePhone();
   const social = useSocial();
+  const roles = useSharedRoles();
+  const sharedHere = !!(projectId && roles[projectId]);
+  const unread = useUnread(sharedHere ? projectId : null);
+  const staff = !!social.me?.staff;
   // phones always get the full menu (it slides in over the page)
   const icon = s.sidebarCollapsed && !phone;
   const trashCount = useLiveQuery(() => db.trash.count(), []);
@@ -82,6 +88,7 @@ export function Sidebar() {
             {s.showStats && <WsBtn label="Statistics" icon={BarChart3} active={route.view === 'statistics'} onClick={() => go({ view: 'statistics', scope: project.id })} />}
             <WsBtn label={social.incoming.length ? `Friends (${social.incoming.length} requests)` : 'Friends'} icon={Users} active={route.view === 'friends'} onClick={() => go({ view: 'friends' })} dot={!!social.incoming.length} />
             <WsBtn label={trashCount ? `Trash (${trashCount})` : 'Trash'} icon={Trash2} active={route.view === 'trash'} onClick={() => go({ view: 'trash' })} dot={!!trashCount} />
+            {staff && <WsBtn label="Admin" icon={Shield} active={route.view === 'admin'} onClick={() => go({ view: 'admin' })} />}
           </div>
         ) : (
           <Section id="workspace" label="Workspace" collapsed={collapsed} toggle={toggle} icon={icon}>
@@ -90,6 +97,7 @@ export function Sidebar() {
             {s.showStats && <Item label="Statistics" icon={BarChart3} active={route.view === 'statistics'} onClick={() => go({ view: 'statistics', ...(project ? { scope: project.id } : {}) })} />}
             <Item label="Friends" icon={Users} active={route.view === 'friends'} onClick={() => go({ view: 'friends' })} badge={social.incoming.length ? String(social.incoming.length) : undefined} />
             <Item label="Trash" icon={Trash2} active={route.view === 'trash'} onClick={() => go({ view: 'trash' })} badge={trashCount ? String(trashCount) : undefined} />
+            {staff && <Item label="Admin" icon={Shield} active={route.view === 'admin'} onClick={() => go({ view: 'admin' })} />}
           </Section>
         )}
 
@@ -99,6 +107,7 @@ export function Sidebar() {
               <button className={'icon-btn sm' + (route.view === 'search' ? ' on' : '')} title="Search this project (Ctrl+Shift+F)" onClick={() => go({ view: 'search', projectId: project.id })}><Search size={14} /></button>
               <button className="icon-btn sm" title="Switch project" onClick={(e) => switchProjectMenu(e)}><FolderOpen size={14} /></button>
             </span> : undefined}>
+            {sharedHere && <Item label="Chat" icon={MessagesSquare} active={route.view === 'chat'} onClick={() => go({ view: 'chat', projectId: project.id })} badge={unread ? String(unread) : undefined} />}
             {orderedTools(s.sidebarTools).filter((t) => t.visible && (t.id !== 'statistics' || s.showStats)).map((t) => {
               const pid = project.id;
               const def: Record<string, { icon: typeof Home; view: string; badge?: string; go: () => void }> = {

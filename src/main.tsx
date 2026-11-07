@@ -18,7 +18,11 @@ import { requestPersistentStorage, isTauri } from './platform';
 import { startBackupLoop, runBackups } from './backupService';
 import { flushAll } from './saveRegistry';
 import { cleanupOrphans } from './db';
-import { startSync } from './sync/engine';
+import { startSync, sharedProjectIds } from './sync/engine';
+import { startChat } from './social/chat';
+import { startPresence } from './social/presence';
+import { startActivity } from './social/activity';
+import { startEffects } from './social/effects';
 import { startSocial } from './social/api';
 
 applySettingsToDOM(getSettings());
@@ -27,7 +31,8 @@ requestPersistentStorage();
 startBackupLoop();
 cleanupOrphans();
 // account sync (does nothing until you sign in)
-setTimeout(() => { void startSync().then(startSocial); }, 800);
+setTimeout(() => { void startSync().then(() => { startSocial(); startChat(sharedProjectIds); startPresence(); startEffects(); }); }, 800);
+startActivity();
 window.addEventListener('beforeunload', () => { flushAll(); });
 
 // Desktop app: behave like an app, not a web page

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Ban, Check, Search, UserMinus, UserPlus, Users, X, Pencil, Cloud } from 'lucide-react';
 import {
-  accept, block, friendsSince, getProfile, isOnline, refreshSocial, relationTo, saveProfile, searchPeople, sendRequest, setShowOnline,
+  accept, block, friendsSince, getProfile, isBanned, isOnline, refreshSocial, relationTo, saveProfile, searchPeople, sendRequest, setShowOnline,
   unblock, unfriend, usernameTaken, useSocial, USERNAME_RE, type Profile,
 } from '../social/api';
 import { useSyncStatus } from '../sync/engine';
@@ -11,6 +11,9 @@ import { Avatar, ImageBox } from './story/common';
 import { pickImage } from '../entities';
 import { Modal, confirmDialog, toast } from './ui';
 import { timeAgo } from '../util';
+import { UserName } from './UserName';
+import { STAFF_LABEL, badge } from '../social/badges';
+import { MuteButton } from './MuteButton';
 
 type Tab = 'friends' | 'requests' | 'find' | 'blocked';
 const nameOf = (p: Profile) => p.display_name || p.username;
@@ -52,8 +55,9 @@ export function FriendsView() {
       <header className="me-card">
         <Avatar name={nameOf(s.me)} image={s.me.avatar ?? undefined} size={56} />
         <div className="col grow" style={{ minWidth: 0 }}>
-          <strong className="me-name ellipsis">{nameOf(s.me)}</strong>
+          <strong className="me-name ellipsis"><UserName p={s.me} /></strong>
           <span className="muted ellipsis">@{s.me.username}</span>
+          {isBanned(s.me) && <span className="small danger-text">Banned until {new Date(s.me.banned_until!).toLocaleString()}{s.me.ban_reason ? `: ${s.me.ban_reason}` : ''}</span>}
         </div>
         <button className="btn sm" onClick={() => setEditing(true)}><Pencil size={13} /> Edit profile</button>
       </header>
@@ -111,7 +115,7 @@ function PersonRow({ p, onOpen, status, children }: { p: Profile; onOpen?: (p: P
       <button className="person-main" onClick={() => onOpen?.(p)} disabled={!onOpen}>
         <span className="avatar-wrap"><Avatar name={nameOf(p)} image={p.avatar ?? undefined} size={38} />{status && <span className={'online-dot' + (online ? ' on' : '')} title={online ? 'Online' : 'Offline'} />}</span>
         <span className="col" style={{ minWidth: 0 }}>
-          <strong className="ellipsis">{nameOf(p)}</strong>
+          <strong className="ellipsis"><UserName p={p} title={false} /></strong>
           <span className="muted small ellipsis">@{p.username}{status ? (online ? ' · Online' : seen ? ` · seen ${timeAgo(seen)}` : '') : ''}</span>
         </span>
       </button>
@@ -153,7 +157,7 @@ function RelationButton({ p }: { p: Profile }) {
   return <button className="btn primary sm" onClick={() => run(() => sendRequest(p.id), 'Friend request sent')}><UserPlus size={13} /> Add friend</button>;
 }
 
-function ProfileModal({ p: initial, onClose }: { p: Profile; onClose: () => void }) {
+export function ProfileModal({ p: initial, onClose }: { p: Profile; onClose: () => void }) {
   useSocial();
   const [p, setP] = useState(initial);
   useEffect(() => { void getProfile(initial.id).then((x) => x && setP(x)); }, [initial.id]);
@@ -166,17 +170,21 @@ function ProfileModal({ p: initial, onClose }: { p: Profile; onClose: () => void
         <div className="row gap">
           <span className="avatar-wrap"><Avatar name={nameOf(p)} image={p.avatar ?? undefined} size={84} />{r === 'friend' && <span className={'online-dot big' + (online ? ' on' : '')} />}</span>
           <div className="col" style={{ minWidth: 0 }}>
-            <strong className="me-name ellipsis">{nameOf(p)}</strong>
-            <span className="muted">@{p.username}</span>
+            <strong className="me-name ellipsis"><UserName p={p} max={0} title={false} /></strong>
+            <span className="muted">@{p.username}{p.staff ? ` · ${STAFF_LABEL[p.staff]}` : ''}</span>
+            {p.title && <span className="u-title big">{p.title}</span>}
+            {isBanned(p) && <span className="small danger-text">Banned until {new Date(p.banned_until!).toLocaleDateString()}</span>}
             {r === 'friend' && <span className="muted small">{online ? 'Online now' : 'Offline'}{since ? ` · friends since ${new Date(since).toLocaleDateString()}` : ''}</span>}
           </div>
         </div>
+        {!!p.badges?.length && <div className="badge-list">{p.badges.map(badge).filter(Boolean).map((b) => <span key={b!.id} className="badge-chip">{b!.emoji} {b!.label}</span>)}</div>}
         {p.bio && <p className="profile-bio">{p.bio}</p>}
         <div className="row gap-s wrap">
           {r === 'friend' ? (
             <button className="btn ghost sm" onClick={async () => { if (await confirmDialog(`Remove ${nameOf(p)} from your friends?`, 'You can send a new request later.', { ok: 'Remove friend' })) run(() => unfriend(p.id), 'Removed'); }}><UserMinus size={13} /> Remove friend</button>
           ) : r !== 'self' && <RelationButton p={p} />}
           {r === 'incoming' && <button className="btn ghost sm" onClick={() => run(() => unfriend(p.id))}><X size={13} /> Decline</button>}
+          {r !== 'self' && <MuteButton id={p.id} />}
           {r !== 'self' && r !== 'blocked' && (
             <button className="btn ghost sm danger-text" onClick={async () => {
               if (await confirmDialog(`Block ${nameOf(p)}?`, 'They won’t be able to find you or send you requests, and you won’t be friends anymore. They aren’t told.', { danger: true, ok: 'Block' })) { await run(() => block(p.id), `Blocked ${nameOf(p)}`); onClose(); }
