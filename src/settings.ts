@@ -64,7 +64,7 @@ export interface Settings {
   /** extra space left and right inside the writing column, px */
   editorMargin: number;
   /** mouse pointer inside Writell: the system one, or Writell's own smooth black / white */
-  mouseCursor: 'system' | 'black' | 'white';
+  mouseCursor: 'system' | 'black' | 'white' | 'outline';
   showStatsBar: boolean;
   autosaveDelay: number;      // ms
   autoBackupMinutes: number;  // 0 = off
@@ -205,21 +205,31 @@ export function togglePin(p: PinRef) {
 }
 
 /* ---- custom mouse cursor (only inside Writell) ---- */
-const svg = (body: string) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>${body}</svg>`)}")`;
-function cursorSet(fill: string, edge: string) {
-  const shadow = `<defs><filter id='s' x='-30%' y='-30%' width='160%' height='160%'><feDropShadow dx='0' dy='1' stdDeviation='0.8' flood-opacity='0.35'/></filter></defs>`;
-  // a smooth, rounded arrow
-  const arrow = svg(`${shadow}<path filter='url(#s)' d='M5.2 3.2 18.4 12.6a.6.6 0 0 1-.28 1.08l-5.3.62 3.05 5.6a.7.7 0 0 1-.28.95l-1.6.86a.7.7 0 0 1-.95-.28l-3.05-5.62-3.9 3.6a.6.6 0 0 1-1-.44V3.7a.6.6 0 0 1 .96-.5Z' fill='${fill}' stroke='${edge}' stroke-width='1.3' stroke-linejoin='round'/>`);
-  // a text cursor (I-beam)
-  const beam = svg(`${shadow}<path filter='url(#s)' d='M9 4.5h1.6c.6 0 1.1.25 1.4.7.3-.45.8-.7 1.4-.7H15M12 5.4v13.2M9 19.5h1.6c.6 0 1.1-.25 1.4-.7.3.45.8.7 1.4.7H15M10.3 12h3.4' fill='none' stroke='${edge}' stroke-width='3.2' stroke-linecap='round'/><path d='M9 4.5h1.6c.6 0 1.1.25 1.4.7.3-.45.8-.7 1.4-.7H15M12 5.4v13.2M9 19.5h1.6c.6 0 1.1-.25 1.4-.7.3.45.8.7 1.4.7H15M10.3 12h3.4' fill='none' stroke='${fill}' stroke-width='1.4' stroke-linecap='round'/>`);
-  // a pointing hand for buttons and links
-  const hand = svg(`${shadow}<path filter='url(#s)' d='M9.2 3.6c.9 0 1.5.7 1.5 1.5v5.2l.4-.1c.8-.2 1.6.3 1.8 1l.1.3.4-.1c.8-.2 1.6.2 1.8 1l.1.4.3-.1c.8-.1 1.5.4 1.7 1.2l.3 1.6c.3 1.8-.1 3.6-1.1 5.1l-.4.6c-.3.4-.7.6-1.2.6H10c-.5 0-.9-.2-1.2-.5L5.2 17c-.6-.7-.6-1.7 0-2.3.6-.6 1.6-.6 2.2 0l.3.3V5.1c0-.8.7-1.5 1.5-1.5Z' fill='${fill}' stroke='${edge}' stroke-width='1.3' stroke-linejoin='round'/>`);
-  return { arrow: `${arrow} 5 3, default`, beam: `${beam} 12 12, text`, hand: `${hand} 9 4, pointer` };
+export const cursorPreview = (kind: 'black' | 'white' | 'outline') => cursorSet(kind).arrow.split(' ')[0];
+const svg = (body: string) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 32 32'>${body}</svg>`)}")`;
+// a clean, rounded dart pointing up-left (its tip is the click point)
+const DART = 'M5.5 4.5 26 12.7 16.4 16.4 12.7 26Z';
+// a slim text cursor
+const BEAM = 'M12 6.5h1.6c1 0 1.8.5 2.4 1.2.6-.7 1.4-1.2 2.4-1.2H20M16 7.8v16.4M12 25.5h1.6c1 0 1.8-.5 2.4-1.2.6.7 1.4 1.2 2.4 1.2H20';
+function cursorSet(kind: 'black' | 'white' | 'outline') {
+  const shadow = `<defs><filter id='s' x='-40%' y='-40%' width='180%' height='180%'><feDropShadow dx='0' dy='1.2' stdDeviation='1.1' flood-opacity='0.35'/></filter></defs>`;
+  let dart: string, beam: string;
+  if (kind === 'outline') {
+    // like an iPad pointer: see-through middle, bright edge
+    dart = `${shadow}<path filter='url(#s)' d='${DART}' fill='#000' fill-opacity='.45' stroke='#000' stroke-opacity='.55' stroke-width='5' stroke-linejoin='round'/><path d='${DART}' fill='none' stroke='#fff' stroke-width='2.4' stroke-linejoin='round'/>`;
+    beam = `${shadow}<path filter='url(#s)' d='${BEAM}' fill='none' stroke='#000' stroke-opacity='.6' stroke-width='4' stroke-linecap='round'/><path d='${BEAM}' fill='none' stroke='#fff' stroke-width='1.7' stroke-linecap='round'/>`;
+  } else {
+    const fill = kind === 'black' ? '#0d0d0f' : '#ffffff', edge = kind === 'black' ? '#ffffff' : '#0d0d0f';
+    dart = `${shadow}<path filter='url(#s)' d='${DART}' fill='${edge}' stroke='${edge}' stroke-width='5.2' stroke-linejoin='round'/><path d='${DART}' fill='${fill}' stroke='${fill}' stroke-width='2.2' stroke-linejoin='round'/>`;
+    beam = `${shadow}<path filter='url(#s)' d='${BEAM}' fill='none' stroke='${edge}' stroke-width='4' stroke-linecap='round'/><path d='${BEAM}' fill='none' stroke='${fill}' stroke-width='1.8' stroke-linecap='round'/>`;
+  }
+  const arrow = svg(dart);
+  return { arrow: `${arrow} 5 4, default`, beam: `${svg(beam)} 14 14, text`, hand: `${arrow} 5 4, pointer` };
 }
-function applyCursor(kind: 'system' | 'black' | 'white') {
+function applyCursor(kind: 'system' | 'black' | 'white' | 'outline') {
   const r = document.documentElement;
   if (kind === 'system') { r.removeAttribute('data-cursor'); ['--cur-default', '--cur-text', '--cur-pointer'].forEach((v) => r.style.removeProperty(v)); return; }
-  const c = kind === 'black' ? cursorSet('#111', '#fff') : cursorSet('#fff', '#111');
+  const c = cursorSet(kind);
   r.setAttribute('data-cursor', kind);
   r.style.setProperty('--cur-default', c.arrow);
   r.style.setProperty('--cur-text', c.beam);

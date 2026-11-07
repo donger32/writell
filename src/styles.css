@@ -1237,3 +1237,10 @@ body.fx-shake .app { animation: fx-shake .75s cubic-bezier(.36, .07, .19, .97); 
 .word-chip button { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; color: var(--muted); }
 .word-chip button:hover { background: var(--hover); color: var(--text); }
 @media (max-width: 700px) { .role-row { flex-wrap: wrap; } .role-name { min-width: 0; } }
+/* cursor choices show the cursor itself */
+.cursor-opt { display: inline-flex; align-items: center; gap: 6px; }
+.cursor-swatch { width: 22px; height: 22px; border-radius: 6px; background: #6b6e7a center / 18px no-repeat; flex: none; }
+/* long dialogs scroll inside instead of running off the screen */
+.modal > :not(.modal-head) { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.modal-head { flex: none; }
+.modal > :not(.modal-head) > * { flex-shrink: 0; }

@@ -2,6 +2,10 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.16.2
+- New mouse cursors: a clean rounded dart (Black, White, or the new see-through Outline) with a slim text cursor; the buttons in Settings show what each looks like.
+- Long windows (like editing a person or a role in Admin) now scroll inside instead of running off the screen.
+
 ## Changes in v0.16.1
 - **One database file:** all the Supabase setup is now in `supabase/writell-setup.sql` (the old stage files are gone). Run it whenever an update says so; running it again is always safe and never brings back words or roles you deleted.
 
