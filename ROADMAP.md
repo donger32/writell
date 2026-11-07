@@ -2,6 +2,12 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.14.0 — live co-writing (stage C)
+- In shared projects, scenes are written together live: everyone's typing merges letter by letter (Yjs), nobody overwrites anybody.
+- See each other's cursors and selections with names in their colour; the scene header shows a live dot and who's in the scene.
+- Edits are encrypted with the project key before they're sent; the server only relays scrambled bytes.
+- If the live connection drops, edits still merge through the regular sync. Undo only undoes your own typing; your word counts only count your own typing; track changes ignores co-writers' edits.
+
 ## Changes in v0.13.0 — sharing projects (stage B)
 - Share button (project Overview, or a project's ⋯ menu): add friends as Editor, Commenter or Viewer; change roles, remove people, make someone else the owner, stop sharing.
 - Invite links (pick the role; expire after 14 days; can be turned off). The secret half of the link never reaches the server.
