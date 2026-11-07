@@ -11,9 +11,9 @@ import { loadCatalog, type BadgeDef, type RoleDef } from './catalog';
 const err = (e: { message?: string; code?: string } | null) => {
   if (!e) return null;
   const m = e.message ?? '';
-  if (/writell_admin|writell_rank|schema cache|PGRST20/.test(m)) return new Error('The admin tools aren’t set up in Supabase yet: run the stage D setup script.');
+  if (/writell_admin|writell_rank|schema cache|PGRST20/.test(m)) return new Error('The admin tools aren’t set up in Supabase yet: run supabase/writell-setup.sql in Supabase (SQL Editor → Run).');
   if (/row-level security/.test(m)) return new Error('Your role isn’t allowed to do that.');
-  if (/username_shape|reserved_shape|username_check|reserved_name_check/.test(m)) return new Error(/username_check|reserved_name_check/.test(m) ? 'Special names need the special-names setup script in Supabase first.' : 'Names can be 1–24 characters, without spaces.');
+  if (/username_shape|reserved_shape|username_check|reserved_name_check/.test(m)) return new Error(/username_check|reserved_name_check/.test(m) ? 'Special names need the latest writell-setup.sql run in Supabase first.' : 'Names can be 1–24 characters, without spaces.');
   return new Error(m.replace(/^.*?exception: /, '') || 'Something went wrong.');
 };
 const ok = <T>(r: { data: T; error: { message?: string; code?: string } | null }) => { if (r.error) throw err(r.error); return r.data; };

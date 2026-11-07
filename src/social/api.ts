@@ -68,7 +68,7 @@ const friendly = (e: { message?: string; code?: string } | null) => {
   if (!e) return null;
   const m = e.message ?? '';
   if (e.code === '23505' && /username/.test(m)) return new Error('That username is taken. Try another.');
-  if (/writell_profiles|writell_friendships|schema cache|PGRST20/.test(m)) return new Error('Friends aren’t set up in Supabase yet: run the stage A setup script.');
+  if (/writell_profiles|writell_friendships|schema cache|PGRST20/.test(m)) return new Error('Friends aren’t set up in Supabase yet: run supabase/writell-setup.sql in Supabase (SQL Editor → Run).');
   if (/reserved|locked your name|banned|allowed/i.test(m)) return new Error(m.replace(/^.*?: /, ''));
   if (/fetch|network/i.test(m)) return new Error('Can’t reach the server. Check your internet connection.');
   return new Error(m || 'Something went wrong.');

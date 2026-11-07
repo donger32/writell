@@ -22,7 +22,7 @@ const me = () => { const id = currentUserId(); if (!id) throw new Error('Sign in
 const err = (e: { message?: string; code?: string } | null) => {
   if (!e) return null;
   const m = e.message ?? '';
-  if (/writell_projects|writell_members|schema cache|PGRST20/.test(m)) return new Error('Sharing isn’t set up in Supabase yet: run the stage B setup script.');
+  if (/writell_projects|writell_members|schema cache|PGRST20/.test(m)) return new Error('Sharing isn’t set up in Supabase yet: run supabase/writell-setup.sql in Supabase (SQL Editor → Run).');
   if (/row-level security/.test(m)) return new Error('You’re not allowed to do that (only friends can be added, and only the owner manages members).');
   return new Error(m || 'Something went wrong.');
 };

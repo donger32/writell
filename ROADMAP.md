@@ -2,6 +2,9 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.16.1
+- **One database file:** all the Supabase setup is now in `supabase/writell-setup.sql` (the old stage files are gone). Run it whenever an update says so; running it again is always safe and never brings back words or roles you deleted.
+
 ## Changes in v0.16.0 — roles, custom badges, name filter (stage E)
 **Needs `supabase/writell-stage-e.sql` run once.**
 - **Roles & permissions:** the owner makes roles (name, color, order) and ticks what each can do: rename people, lock names, titles & colors, give badges, make badges, ban, manage chats, clear profiles, flagged names, word filter, reserve names, announcements, fun effects, see the log. Admin and Moderator are ready-made roles you can change or delete. Staff only see the tabs and buttons their role allows, and the database checks every action.
@@ -255,7 +258,7 @@ Interpretations worth knowing:
 ## Stage 4 — Collaboration (Supabase)
 | Feature | Status | Notes |
 |---|---|---|
-| Accounts, encrypted cloud sync between your own devices | ✅ | v0.10.0. `supabase/writell-sync.sql`. Encrypted on the device before upload |
+| Accounts, encrypted cloud sync between your own devices | ✅ | v0.10.0. Database: `supabase/writell-setup.sql`. Encrypted on the device before upload |
 | Profiles, usernames, friends, requests, blocking, online status | ✅ | v0.12.0. `supabase/writell-stage-a.sql` (+ `-fix`) |
 | Sharing projects: roles (owner / editor / commenter / viewer), invite links | ✅ | v0.13.0. `supabase/writell-stage-b.sql`. Each project has its own key |
 | Live co-writing (Yjs), named cursors | ✅ | v0.14.0 – 0.14.1 |

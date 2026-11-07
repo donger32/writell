@@ -32,14 +32,9 @@ Bump `version` in `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.
 
 ## Accounts & sync
 
-Settings → Account & sync. Uses the Supabase project in `src/sync/config.ts`; the database setup is `supabase/writell-sync.sql`. Everything is encrypted on the device before upload.
+Settings → Account & sync. Uses the Supabase project in `src/sync/config.ts`; the database setup is `supabase/writell-setup.sql`. Everything is encrypted on the device before upload.
 
 
-## Supabase setup scripts (run once each, in order)
+## Supabase database setup
 
-1. `supabase/writell-sync.sql`: accounts & sync
-2. `supabase/writell-stage-a.sql`, then `writell-stage-a-fix.sql`: profiles & friends
-3. `supabase/writell-stage-b.sql`: shared projects
-4. `supabase/writell-stage-d.sql`: project chat & admin tools (last line: your username)
-5. `supabase/writell-special-names.sql`: special usernames admins can hand out
-6. `supabase/writell-stage-e.sql`: roles & permissions, custom badges, name filter & flags, chat mutes
+Everything the database needs is in **one file: `supabase/writell-setup.sql`**. Paste it into Supabase → SQL Editor and press Run. It's safe to run again any time: when an update needs database changes, that file is updated and you just run it again. (The last line makes you the owner: put your username in it the first time.)

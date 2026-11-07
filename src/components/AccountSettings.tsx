@@ -139,7 +139,7 @@ function SignedIn() {
           {st.phase === 'synced' && st.lastSync ? <span className="muted"> · {timeAgo(st.lastSync)}</span> : null}
           {st.pending > 0 && st.phase !== 'synced' ? <span className="muted"> · {st.pending} change{st.pending === 1 ? '' : 's'} waiting</span> : null}
         </div>
-        {st.phase === 'setup-missing' && <p className="small danger-text">The storage tables aren't in your Supabase project yet. Run the setup script in Supabase → SQL Editor, then tap “Sync now”.</p>}
+        {st.phase === 'setup-missing' && <p className="small danger-text">The storage tables aren't in your Supabase project yet. Run writell-setup.sql in Supabase → SQL Editor, then tap “Sync now”.</p>}
         {st.phase === 'error' && st.message && <p className="small danger-text">{st.message}</p>}
         <div className="row gap-s wrap">
           <button className="btn sm" disabled={st.phase === 'syncing' || st.phase === 'paused'} onClick={() => syncNow({ scan: true })}><RefreshCw size={13} className={st.phase === 'syncing' ? 'spin' : ''} /> Sync now</button>
