@@ -12,15 +12,16 @@
 /* ---------- sizes ---------- */
 export const MAP_SIZES: { id: string; N: number; label: string; sub: string }[] = [
   { id: 'small', N: 160, label: 'Small', sub: 'An island or a region' },
-  { id: 'medium', N: 256, label: 'Medium', sub: 'A country' },
-  { id: 'large', N: 384, label: 'Large', sub: 'Several countries' },
-  { id: 'huge', N: 512, label: 'Huge', sub: 'A continent' },
-  { id: 'giant', N: 768, label: 'Giant', sub: 'A whole world' },
+  { id: 'medium', N: 320, label: 'Medium', sub: 'A country' },
+  { id: 'large', N: 512, label: 'Large', sub: 'Several countries' },
+  { id: 'huge', N: 800, label: 'Huge', sub: 'A continent' },
+  { id: 'giant', N: 1280, label: 'Giant', sub: 'A whole world' },
 ];
-export const MAX_N = 768;
+export const MAX_N = 1280;
 /** width of the land in 3D units (the first maps were 160 cells = 100 units; every size keeps that cell size) */
 export const worldSize = (N: number) => (100 * (N - 1)) / 159;
-export const sizeLabel = (N: number) => MAP_SIZES.find((s) => s.N === N)?.label ?? `${N}×${N}`;
+/** the size name, or the nearest one for maps made when the sizes were different */
+export const sizeLabel = (N: number) => MAP_SIZES.reduce((a, b) => (Math.abs(Math.log(b.N / N)) < Math.abs(Math.log(a.N / N)) ? b : a)).label;
 
 /* ---------- things you can place ---------- */
 export type ObjKind = 'house' | 'cottage' | 'tower' | 'castle' | 'wall' | 'bridge' | 'tent' | 'well' | 'flag' | 'tree' | 'pine' | 'rock';

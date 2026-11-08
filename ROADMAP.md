@@ -2,6 +2,12 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.17.3 — much bigger map sizes
+
+No database changes.
+
+- **Bigger sizes.** Small stays the same; Medium is now 2× as wide as Small, Large 3.2×, Huge 5× and Giant 8× (it was 4.8×). Older maps keep their land and show the nearest size name; "Make bigger" can grow them to the new sizes.
+
 ## Changes in v0.17.2 — travel across big worlds
 
 No database changes.
