@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import {
-  Plus, Pencil, Trash2, Box, Square, Hand, ArrowUp, ArrowDown, Waves, Minus, Paintbrush, MapPin, Wand2, ImagePlus, Download, X, ExternalLink, Undo2, Home, MousePointer2, Eraser, Maximize, RotateCw, Copy,
+  Plus, Pencil, Trash2, Box, Square, Hand, ArrowUp, ArrowDown, Waves, Minus, Paintbrush, MapPin, Wand2, ImagePlus, Download, X, ExternalLink, Undo2, Home, MousePointer2, Eraser, SlidersHorizontal, Maximize, RotateCw, Copy,
 } from 'lucide-react';
 import { db, uid, type Entity } from '../../db';
 import { createEntity, deleteEntity, updateEntity, pickImage } from '../../entities';
@@ -137,8 +137,11 @@ function MapEditor({ map }: { map: Entity }) {
   const [strength, setStrength] = useState(0.6);
   const [biome, setBiome] = useState(2);
   const [kind, setKind] = useState<ObjKind>('house');
+  // phones: the side panel is a sheet over the bottom of the map, opened when it's needed
+  const [sheet, setSheet] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
   const [selObj, setSelObj] = useState<string | null>(null);
+  useEffect(() => { if (selObj || tool === 'object') setSheet(true); }, [selObj, tool]); // the palette / editing controls live in the sheet
   const [pendingLine, setPendingState] = useState<{ u: number; v: number } | null>(null);
   // a ref too, so quick clicks in a row never see an old value
   const pendingRef = useRef(pendingLine);
@@ -303,6 +306,7 @@ function MapEditor({ map }: { map: Entity }) {
           <button className={view === '3d' ? 'on' : ''} onClick={() => set({ view: '3d' })} title="3D view"><Box size={14} /> 3D</button>
           <button className={view === '2d' ? 'on' : ''} onClick={() => set({ view: '2d' })} title="2D view"><Square size={14} /> 2D</button>
         </div>
+        <button className={'tb-btn map-sheet-btn' + (sheet ? ' on' : '')} title="Map details" aria-pressed={sheet} onClick={() => setSheet((v) => !v)}><SlidersHorizontal size={15} /></button>
         <span className="tb-sep" />
         {TOOLS.map((t) => <button key={t.id} className={'tb-btn' + (tool === t.id ? ' on' : '')} title={`${t.label} (${t.key})`} aria-pressed={tool === t.id} onClick={() => { setTool(t.id); setPendingLine(null); }}><t.icon size={15} /></button>)}
         <button className="tb-btn" title="Undo (Ctrl+Z)" onClick={doUndo}><Undo2 size={15} /></button>
@@ -317,12 +321,12 @@ function MapEditor({ map }: { map: Entity }) {
         ))}</div>}
         <span className="grow" />
         <span className="muted small map-size-tag" title={`${N}×${N} cells`}>{sizeLabel(N)}</span>
-        <button className="btn ghost sm" onClick={() => setRegen(true)}><Wand2 size={13} /> Land &amp; water</button>
+        <button className="btn ghost sm" title="Land & water" onClick={() => setRegen(true)}><Wand2 size={13} /><span className="tb-label"> Land &amp; water</span></button>
         <button className="btn ghost sm" title="Save a picture of this view" onClick={async () => {
           const url = snapshot.current?.(); if (!url) return;
           const bin = atob(url.split(',')[1]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
           if (await saveBinary(`${safeName(map.name)} ${view}.png`, bytes, 'image/png')) toast('Map image saved');
-        }}><Download size={13} /> Image</button>
+        }}><Download size={13} /><span className="tb-label"> Image</span></button>
       </div>
 
       <div className="map-body">
@@ -338,7 +342,8 @@ function MapEditor({ map }: { map: Entity }) {
           </div>
         </div>
 
-        <aside className="map-side">
+        <aside className={'map-side' + (sheet ? ' open' : '')}>
+          <div className="map-sheet-head row"><h4 className="grow">Map details</h4><button className="icon-btn sm" aria-label="Close" onClick={() => setSheet(false)}><X size={14} /></button></div>
           {selected && (
             <div className="pin-editor" key={selected.id}>
               <div className="row"><h4 className="grow">{objDef(selected.kind).label}</h4><button className="icon-btn sm" aria-label="Deselect" onClick={() => setSelObj(null)}><X size={12} /></button></div>

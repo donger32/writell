@@ -1293,3 +1293,20 @@ body.fx-shake .app { animation: fx-shake .75s cubic-bezier(.36, .07, .19, .97); 
 
 /* the relation map and trees use their own zoom: cancel the interface scale there so dragging follows the mouse */
 .react-flow { zoom: calc(1 / var(--ui-scale, 1)); }
+
+/* map page on phones: a full-size map, one scrolling row of tools, and the details in a sheet you open */
+.map-sheet-btn, .map-sheet-head { display: none !important; }
+@media (max-width: 700px), (max-height: 500px) and (pointer: coarse) {
+  .map-tools { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 6px 10px; }
+  .map-tools::-webkit-scrollbar { display: none; }
+  .map-tools > * { flex: none; }
+  .map-tools .tb-label, .map-size-tag { display: none; }
+  .map-sheet-btn { display: inline-flex !important; }
+  .map-body { position: relative; }
+  .map-side { display: none; }
+  .map-side.open { display: flex; position: absolute; left: 0; right: 0; bottom: 0; width: auto; max-height: 55%; z-index: 6; border-left: 0; border-top: 1px solid var(--border);
+    border-radius: 14px 14px 0 0; box-shadow: var(--shadow); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .map-sheet-head { display: flex !important; position: sticky; top: -12px; margin: -12px -12px 0; padding: 10px 12px 6px; background: var(--panel); z-index: 1; }
+  .map-hint { display: none; }
+  .map-mini { transform: scale(.68); transform-origin: top right; right: 8px; top: 8px; }
+}

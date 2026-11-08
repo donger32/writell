@@ -294,7 +294,9 @@ export function Terrain3D(p: TerrainProps) {
       s.mini.style.width = mw + 'px'; s.mini.style.height = mh + 'px';
       s.drawMiniBase();
     }
-    s.camera.position.set(0, F * 0.85, F * 1.1); s.controls.target.set(0, 0, 0); s.controls.update();
+    // a tall screen (a phone) looks down more steeply so the land fills it
+    const tall = (host.current?.clientHeight ?? 0) > (host.current?.clientWidth ?? 1) * 1.1;
+    s.camera.position.set(0, F * (tall ? 1.3 : 0.85), F * (tall ? 0.62 : 1.1)); s.controls.target.set(0, 0, 0); s.controls.update();
     { const fog = s.scene.fog as THREE.Fog, dist = s.camera.position.distanceTo(s.controls.target); fog.near = dist * (big ? 1 : 1.6); fog.far = dist * (big ? 2.4 : 3.4); }
     s.drawMiniMark();
     p.dirtyRef.current = null;

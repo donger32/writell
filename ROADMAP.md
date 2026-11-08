@@ -2,6 +2,12 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.17.5 — maps on phones
+
+No database changes.
+
+- **Map page on phones:** the map uses the whole width, the tools sit in one row you can swipe sideways, and pins, timeline, look and the building palette are in a "Map details" sheet (sliders button) that slides up from the bottom. It opens by itself when you place or select things. The 3D view looks down more steeply on tall screens so the land fills them, and the mouse hints are hidden.
+
 ## Changes in v0.17.4 — remove tool for maps
 
 No database changes.
