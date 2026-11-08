@@ -2,10 +2,13 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { cellColor, objDef, worldSize, type MapObject, type Pin, type Tool } from '../../mapdata';
+import { cellColor, objDef, renderTopDown, worldSize, type MapObject, type Pin, type Tool } from '../../mapdata';
 
 /** the land is cut into tiles of this many cells, so painting only rebuilds the tiles under the brush */
 const TILE = 64;
+/** maps bigger than a small one can't be seen all at once: you travel across them */
+const SMALL = worldSize(160);
+const isBig = (N: number) => N > 160;
 
 export interface Rect { x0: number; y0: number; x1: number; y1: number }
 export interface TerrainProps {
@@ -26,6 +29,7 @@ interface State {
   renderer: THREE.WebGLRenderer; labels: CSS2DRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls;
   land: THREE.Group; chunks: Chunk[]; material: THREE.MeshStandardMaterial; water: THREE.Mesh; skirt: THREE.Mesh; ring: THREE.Mesh; pins: THREE.Group;
   objects: THREE.Group; owners: Map<THREE.InstancedMesh, string[]>; marker: THREE.Mesh; render: () => void; tex?: THREE.Texture; key: string;
+  mini: HTMLDivElement; drawMiniBase: () => void; drawMiniMark: () => void; miniT: number;
 }
 
 /** Sculptable 3D terrain (three.js). Same data as the 2D view. */
@@ -76,15 +80,88 @@ export function Terrain3D(p: TerrainProps) {
     let rq = 0;
     const render = () => { if (!rq) rq = requestAnimationFrame(renderNow); };
     controls.screenSpacePanning = false; // right-drag slides along the ground, so you can travel across big worlds
+
+    // ---- overview map in the corner (big maps): where you are, click or drag to go somewhere
+    const mini = document.createElement('div'); mini.className = 'map-mini'; mini.hidden = true;
+    mini.title = 'Where you are. Click or drag to go somewhere.';
+    const miniBase = document.createElement('canvas'), miniMark = document.createElement('canvas');
+    mini.append(miniBase, miniMark); el.appendChild(mini);
+    const drawMiniBase = () => {
+      if (mini.hidden) return;
+      const { N, heights, paint, sea } = props.current;
+      const t = document.createElement('canvas'); t.width = N; t.height = N;
+      renderTopDown(t.getContext('2d')!, heights, paint, N, sea);
+      const c = miniBase.getContext('2d')!; c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+      c.drawImage(t, 0, 0, miniBase.width, miniBase.height);
+    };
+    const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), mray = new THREE.Raycaster(), corner = new THREE.Vector2(), hitPt = new THREE.Vector3();
+    const drawMiniMark = () => {
+      if (mini.hidden) return;
+      const { W, D } = dims(); const w = miniMark.width, h = miniMark.height; const c = miniMark.getContext('2d')!;
+      c.clearRect(0, 0, w, h);
+      const far = (scene.fog as THREE.Fog).far;
+      // the patch of ground you can see: where the corners of the screen meet the land (up to the haze)
+      const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) => {
+        mray.setFromCamera(corner.set(x, y), camera);
+        const hit = mray.ray.intersectPlane(ground, hitPt);
+        const t = Math.min(hit ? mray.ray.origin.distanceTo(hitPt) : Infinity, far);
+        const q = mray.ray.at(t, new THREE.Vector3());
+        return [(q.x / W + 0.5) * w, (q.z / D + 0.5) * h];
+      });
+      c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath();
+      c.fillStyle = 'rgba(255,255,255,.16)'; c.fill();
+      c.lineWidth = 1.5 * (w / miniMark.clientWidth || 1); c.strokeStyle = 'rgba(255,255,255,.9)'; c.stroke();
+      const tx = (controls.target.x / W + 0.5) * w, tz = (controls.target.z / D + 0.5) * h;
+      c.beginPath(); c.arc(tx, tz, 3.5 * (w / miniMark.clientWidth || 1), 0, Math.PI * 2); c.fillStyle = '#8b7cf6'; c.fill();
+    };
+    const moveBy = (dx: number, dz: number) => {
+      controls.target.x += dx; controls.target.z += dz; camera.position.x += dx; camera.position.z += dz; controls.update();
+    };
+    const goTo = (e: PointerEvent) => {
+      const r = mini.getBoundingClientRect(); const { W, D } = dims();
+      const u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height;
+      moveBy((u - 0.5) * W - controls.target.x, (v - 0.5) * D - controls.target.z);
+    };
+    mini.addEventListener('pointerdown', (e) => { e.preventDefault(); mini.setPointerCapture(e.pointerId); goTo(e); });
+    mini.addEventListener('pointermove', (e) => { if (e.buttons & 1) goTo(e); });
+
     controls.addEventListener('change', () => {
       // stay over the map, and let the haze follow how far out you are
       const { W, D } = dims(); const t = controls.target;
       const cx = Math.max(-W / 2, Math.min(W / 2, t.x)), cz = Math.max(-D / 2, Math.min(D / 2, t.z));
       if (cx !== t.x || cz !== t.z) { camera.position.x += cx - t.x; camera.position.z += cz - t.z; t.x = cx; t.z = cz; }
-      const dist = camera.position.distanceTo(t), fog = scene.fog as THREE.Fog;
-      fog.near = dist * 1.6; fog.far = dist * 3.4;
+      setFog();
+      drawMiniMark();
       render();
     });
+    // on big maps the far-off land fades away, so there is always more out there
+    const setFog = () => {
+      const dist = camera.position.distanceTo(controls.target), fog = scene.fog as THREE.Fog, big = isBig(props.current.N);
+      fog.near = dist * (big ? 1 : 1.6); fog.far = dist * (big ? 2.4 : 3.4);
+    };
+
+    // ---- arrow keys travel across the land (Shift = faster)
+    const held = new Set<string>(); let walkRaf = 0, last = 0, fast = false;
+    const fwd = new THREE.Vector3();
+    const walk = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      if (!held.size || !el.isConnected) { walkRaf = 0; return; }
+      fwd.subVectors(controls.target, camera.position); fwd.y = 0; fwd.normalize();
+      let f = 0, r = 0;
+      if (held.has('ArrowUp')) f++; if (held.has('ArrowDown')) f--; if (held.has('ArrowRight')) r++; if (held.has('ArrowLeft')) r--;
+      const sp = camera.position.distanceTo(controls.target) * 0.8 * dt * (fast ? 3 : 1);
+      moveBy((fwd.x * f - fwd.z * r) * sp, (fwd.z * f + fwd.x * r) * sp);
+      walkRaf = requestAnimationFrame(walk);
+    };
+    const keyDown = (e: KeyboardEvent) => {
+      if (!e.key.startsWith('Arrow') || e.ctrlKey || e.metaKey || e.altKey) return;
+      if ((e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"], [role="slider"]')) return;
+      e.preventDefault(); held.add(e.key); fast = e.shiftKey;
+      if (!walkRaf) { last = performance.now(); walkRaf = requestAnimationFrame(walk); }
+    };
+    const keyUp = (e: KeyboardEvent) => { held.delete(e.key); fast = e.shiftKey; };
+    const blur = () => held.clear();
+    window.addEventListener('keydown', keyDown); window.addEventListener('keyup', keyUp); window.addEventListener('blur', blur);
 
     const resize = () => {
       const w = el.clientWidth, h = el.clientHeight;
@@ -92,7 +169,7 @@ export function Terrain3D(p: TerrainProps) {
       camera.aspect = w / Math.max(1, h); camera.updateProjectionMatrix(); renderNow();
     };
     const ro = new ResizeObserver(resize); ro.observe(el);
-    S.current = { renderer, labels, scene, camera, controls, land, chunks: [], material, water, skirt, ring, pins, objects, owners: new Map(), marker, render, key: '' };
+    S.current = { renderer, labels, scene, camera, controls, land, chunks: [], material, water, skirt, ring, pins, objects, owners: new Map(), marker, render, key: '', mini, drawMiniBase, drawMiniMark, miniT: 0 };
     if (p.snapshotRef) p.snapshotRef.current = () => { renderNow(); return renderer.domElement.toDataURL('image/png'); };
 
     // ---- pointer: sculpt / paint / place pins and things / pick and move things
@@ -163,7 +240,8 @@ export function Terrain3D(p: TerrainProps) {
     dom.addEventListener('pointerdown', down); dom.addEventListener('pointermove', move); dom.addEventListener('pointerup', up); dom.addEventListener('pointerleave', leave);
 
     return () => {
-      ro.disconnect(); controls.dispose(); cancelAnimationFrame(rq);
+      ro.disconnect(); controls.dispose(); cancelAnimationFrame(rq); cancelAnimationFrame(walkRaf); clearTimeout(S.current?.miniT);
+      window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('blur', blur);
       dom.removeEventListener('pointerdown', down); dom.removeEventListener('pointermove', move); dom.removeEventListener('pointerup', up); dom.removeEventListener('pointerleave', leave);
       scene.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach((x) => x.dispose()); else mat?.dispose?.(); });
       S.current?.tex?.dispose();
@@ -203,13 +281,22 @@ export function Terrain3D(p: TerrainProps) {
       const mesh = new THREE.Mesh(g, s.material);
       s.land.add(mesh); s.chunks.push({ mesh, x0, y0, x1, y1 });
     }
-    // camera, fog and limits follow the size of the world
-    // start close enough to see the land properly; scroll out to see the whole world
-    const F = Math.min(S0, worldSize(160)); // the same view as a small map
+    // a small map fits on the screen; bigger maps start at the same view and can't be zoomed out further,
+    // so you travel across them (right-drag, arrow keys or the overview map)
+    const big = isBig(N);
+    const F = Math.min(S0, SMALL);
     s.camera.far = S0 * 10; s.camera.updateProjectionMatrix();
-    s.controls.maxDistance = S0 * 3.2;
+    s.controls.maxDistance = big ? SMALL * 1.9 : S0 * 3.2;
+    s.mini.hidden = !big;
+    if (big) {
+      const dpr = Math.min(2, window.devicePixelRatio || 1), mw = 160, mh = Math.round(160 / p.aspect);
+      for (const c of s.mini.querySelectorAll('canvas')) { c.width = mw * dpr; c.height = mh * dpr; }
+      s.mini.style.width = mw + 'px'; s.mini.style.height = mh + 'px';
+      s.drawMiniBase();
+    }
     s.camera.position.set(0, F * 0.85, F * 1.1); s.controls.target.set(0, 0, 0); s.controls.update();
-    { const fog = s.scene.fog as THREE.Fog, dist = s.camera.position.distanceTo(s.controls.target); fog.near = dist * 1.6; fog.far = dist * 3.4; }
+    { const fog = s.scene.fog as THREE.Fog, dist = s.camera.position.distanceTo(s.controls.target); fog.near = dist * (big ? 1 : 1.6); fog.far = dist * (big ? 2.4 : 3.4); }
+    s.drawMiniMark();
     p.dirtyRef.current = null;
   }, [geoKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -252,6 +339,8 @@ export function Terrain3D(p: TerrainProps) {
     // a hair smaller than the land so the earth walls never flicker through it
     s.water.scale.set(W * 0.998, Math.max(0.01, top - base - 0.05), D * 0.998);
     s.water.position.y = (top + base + 0.05) / 2;
+    // the overview map catches up once the brush rests
+    clearTimeout(s.miniT); s.miniT = window.setTimeout(() => S.current?.drawMiniBase(), rect ? 400 : 0);
     s.render();
   }, [p.version, p.sea, p.heightScale, p.lowPoly, geoKey]); // eslint-disable-line react-hooks/exhaustive-deps
 

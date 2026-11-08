@@ -565,6 +565,8 @@ p { margin: 6px 0; }
 .pin-editor { border: 1px solid var(--border); border-radius: 9px; padding: 9px; display: flex; flex-direction: column; gap: 7px; background: var(--bg); }
 .terrain3d { position: absolute; inset: 0; }
 .terrain3d canvas { display: block; touch-action: none; }
+.map-mini { position: absolute; right: 12px; top: 12px; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 18px rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.18); cursor: crosshair; z-index: 2; touch-action: none; }
+.map-mini canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .map-labels { position: absolute; inset: 0; pointer-events: none; }
 .map-label { pointer-events: auto; font: 600 12px var(--ui-font); color: #fff; background: rgba(15,16,20,.72); border: 1px solid rgba(255,255,255,.18); padding: 2px 8px; border-radius: 99px; white-space: nowrap; cursor: var(--cur-pointer, pointer); }
 .map-label.on { background: var(--accent); border-color: var(--accent); }

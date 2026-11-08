@@ -2,6 +2,14 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.17.2 — travel across big worlds
+
+No database changes.
+
+- **Big maps can't be seen all at once in 3D.** Anything bigger than Small starts at a Small map's view and can't be zoomed out much further; far-off land fades into the distance. The 2D view still shows the whole world.
+- **Overview map** in the top corner of 3D on big maps: shows where you are and what you can see. Click or drag on it to go somewhere.
+- **Arrow keys travel** across the land (hold Shift to go faster).
+
 ## Changes in v0.17.1 — bigger maps are bigger worlds
 
 No database changes.
