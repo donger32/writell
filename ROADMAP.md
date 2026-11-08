@@ -2,6 +2,15 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.17.1 — bigger maps are bigger worlds
+
+No database changes.
+
+- **Bigger maps cover more ground.** Hills, coasts and mountains are the same real size on every map, so a Giant map is a world with many more of them instead of one island stretched out. Houses and everything else you place stay the same size.
+- **Big maps open up close.** The 3D view starts showing as much land as a Small map does; scroll out to see the whole world. Right-drag slides along the ground, and the haze follows how far out you are.
+- **2D view:** big maps start zoomed in too ("Whole map" shows all of it), the picture is sharper when zoomed in, and outlines stay thin.
+- New maps start at a mountain height that suits their size; making a map bigger keeps its height.
+
 ## Changes in v0.17.0 — bigger maps, your own types, timeline 30000 BC – 30000
 No database changes.
 - **Maps:** five sizes up to Giant (a whole world), and any map can be made bigger later from Land & water. New maps start low-poly. The height slider goes much higher. Place houses, cottages, towers, castles, tents, wells, walls, bridges, trees, pines, rocks and flags (B), then select (E) to move, turn (, and .), resize, recolor, copy or remove them; they show in 2D too. Big maps only redraw the part you're painting.

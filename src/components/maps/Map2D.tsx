@@ -21,8 +21,15 @@ export function Map2D(p: Map2DProps) {
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const drag = useRef<{ mode: 'pan' | 'draw' | 'pin' | 'obj'; x: number; y: number; vx: number; vy: number; pin?: string; u?: number; v?: number } | null>(null);
-  const RES = 1024;
+  const RES = Math.min(3072, Math.max(1024, p.N * 4)); // sharp enough to zoom into big maps
   const H = Math.round(RES / p.aspect);
+
+  // bigger maps start zoomed in, showing as much land as a small map does
+  const startView = () => {
+    const k = Math.max(1, (p.N - 1) / 159), w = wrap.current?.clientWidth ?? 0, h = wrap.current?.clientHeight ?? 0;
+    return { k, x: (w / 2) * (1 - k), y: (h / 2) * (1 - k) };
+  };
+  useEffect(() => { setView(startView()); }, [p.N]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!p.image) { setImg(null); return; }
@@ -65,7 +72,7 @@ export function Map2D(p: Map2DProps) {
   const onWheel = (e: React.WheelEvent) => {
     const r = wrap.current!.getBoundingClientRect();
     const z = uiZoom(); const mx = (e.clientX - r.left) / z, my = (e.clientY - r.top) / z;
-    const k = Math.max(0.4, Math.min(8, view.k * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+    const k = Math.max(0.4, Math.min(8 * Math.max(1, p.N / 160), view.k * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
     setView({ k, x: mx - ((mx - view.x) * k) / view.k, y: my - ((my - view.y) * k) / view.k });
   };
 
@@ -122,7 +129,10 @@ export function Map2D(p: Map2DProps) {
           ))}
         </div>
       </div>
-      <button className="btn sm map2d-reset" onClick={() => setView({ x: 0, y: 0, k: 1 })}>Reset view</button>
+      <div className="row gap-s map2d-reset">
+        {p.N > 160 && <button className="btn sm" onClick={() => setView(startView())}>Reset view</button>}
+        <button className="btn sm" onClick={() => setView({ x: 0, y: 0, k: 1 })}>{p.N > 160 ? 'Whole map' : 'Reset view'}</button>
+      </div>
     </div>
   );
 }
@@ -141,11 +151,11 @@ function Things2D({ objects, selected, pending, N, aspect }: { objects: MapObjec
         if (o.u2 !== undefined) return <line key={o.id} x1={x} y1={y} x2={o.u2 * VW} y2={(o.v2 ?? o.v) * VH} stroke={on ? '#8b7cf6' : c} strokeWidth={sz(o.kind === 'bridge' ? 1.4 : 0.6) * k} strokeLinecap="round" />;
         const rot = (-o.rot * 180) / Math.PI;
         if (o.kind === 'tree' || o.kind === 'pine' || o.kind === 'rock' || o.kind === 'well' || o.kind === 'tower' || o.kind === 'tent' || o.kind === 'flag')
-          return <circle key={o.id} cx={x} cy={y} r={sz(o.kind === 'tower' ? 1 : o.kind === 'tent' ? 1.1 : o.kind === 'flag' ? 0.5 : 0.85) * k} fill={c} stroke={stroke} strokeWidth={sw} />;
+          return <circle key={o.id} cx={x} cy={y} r={sz(o.kind === 'tower' ? 1 : o.kind === 'tent' ? 1.1 : o.kind === 'flag' ? 0.5 : 0.85) * k} fill={c} stroke={stroke} strokeWidth={sw} vectorEffect="non-scaling-stroke" />;
         const w = (o.kind === 'castle' ? 5.2 : o.kind === 'cottage' ? 1.6 : 2.4), d = (o.kind === 'castle' ? 5.2 : o.kind === 'cottage' ? 1.4 : 2);
-        return <rect key={o.id} x={x - (sz(w) * k) / 2} y={y - (sz(d) * k) / 2} width={sz(w) * k} height={sz(d) * k} fill={c} stroke={stroke} strokeWidth={sw} transform={`rotate(${rot} ${x} ${y})`} />;
+        return <rect key={o.id} x={x - (sz(w) * k) / 2} y={y - (sz(d) * k) / 2} width={sz(w) * k} height={sz(d) * k} fill={c} stroke={stroke} strokeWidth={sw} vectorEffect="non-scaling-stroke" transform={`rotate(${rot} ${x} ${y})`} />;
       })}
-      {pending && <circle cx={pending.u * VW} cy={pending.v * VH} r={6} fill="none" stroke="#8b7cf6" strokeWidth={2.5} />}
+      {pending && <circle cx={pending.u * VW} cy={pending.v * VH} r={6} fill="none" stroke="#8b7cf6" strokeWidth={2.5} vectorEffect="non-scaling-stroke" />}
     </svg>
   );
 }

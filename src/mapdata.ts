@@ -137,42 +137,54 @@ export function decodeU8(b64: string | undefined, n: number): Uint8Array {
 }
 
 /* ---------- terrain generation ---------- */
-function rng(seed: number) { return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
-
-function valueNoise(N: number, seed: number) {
-  const r = rng(seed);
-  const G = 257; const grid = new Float32Array(G * G).map(() => r());
-  const smooth = (t: number) => t * t * (3 - 2 * t);
-  return (x: number, y: number) => {
-    const xi = Math.floor(x), yi = Math.floor(y), xf = smooth(x - xi), yf = smooth(y - yi);
-    const g = (a: number, b: number) => grid[((b % G) + G) % G * G + ((a % G) + G) % G];
-    const top = g(xi, yi) + (g(xi + 1, yi) - g(xi, yi)) * xf;
-    const bot = g(xi, yi + 1) + (g(xi + 1, yi + 1) - g(xi, yi + 1)) * xf;
-    void N;
-    return top + (bot - top) * yf;
-  };
+// hash-based value noise: no repeating pattern, however big the map
+const hash = (x: number, y: number, s: number) => {
+  let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1274126177)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+};
+function noise(x: number, y: number, s: number) {
+  const xi = Math.floor(x), yi = Math.floor(y); let xf = x - xi, yf = y - yi;
+  xf = xf * xf * (3 - 2 * xf); yf = yf * yf * (3 - 2 * yf);
+  const a = hash(xi, yi, s), b = hash(xi + 1, yi, s), c = hash(xi, yi + 1, s), d = hash(xi + 1, yi + 1, s);
+  const t = a + (b - a) * xf, u = c + (d - c) * xf; return t + (u - t) * yf;
+}
+function fbm(x: number, y: number, f: number, oct: number, s: number) {
+  let v = 0, amp = 1, tot = 0;
+  for (let o = 0; o < oct; o++) { v += noise(x * f, y * f, s + o * 101) * amp; tot += amp; amp *= 0.5; f *= 2; }
+  return v / tot;
 }
 
 export type Shape = 'island' | 'archipelago' | 'continent' | 'mountains' | 'flat';
 
+/**
+ * Hills, coasts and mountains are the same real size on every map, so a bigger map is a bigger world
+ * with more of them (not the same island stretched out). Where the land masses go scales with the map.
+ */
 export function generate(N: number, shape: Shape, seed = Math.floor(Math.random() * 1e9)): Float32Array {
   const h = new Float32Array(N * N);
   if (shape === 'flat') return h.fill(0.32);
-  const noise = valueNoise(N, seed);
-  const freq = shape === 'archipelago' ? 7 : shape === 'mountains' ? 4 : 3;
+  const k = N / 160; // how many small maps fit across
+  const lands = shape === 'continent' ? 1.4 + k * 0.55 : shape === 'island' ? 1.2 + k * 0.25 : 1.2 + k * 0.35;
+  const detailF = (shape === 'archipelago' ? 5 : shape === 'mountains' ? 4 : 3) / 160;
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-    let v = 0, amp = 1, f = freq / N, tot = 0;
-    for (let o = 0; o < 5; o++) { v += noise(x * f + o * 31, y * f + o * 17) * amp; tot += amp; amp *= 0.5; f *= 2; }
-    v /= tot;
-    const dx = x / (N - 1) - 0.5, dy = y / (N - 1) - 0.5, d = Math.sqrt(dx * dx + dy * dy) * 2;
-    if (shape === 'island') v = v * 0.85 + 0.35 - d * 0.75;
-    else if (shape === 'archipelago') v = v * 1.1 - d * 0.35;
-    else if (shape === 'continent') v = v * 0.9 + 0.2 - Math.max(0, d - 0.6) * 0.9;
-    else if (shape === 'mountains') v = Math.pow(v, 1.6) * 1.5;
+    const ux = x / (N - 1), uy = y / (N - 1);
+    const dx = ux - 0.5, dy = uy - 0.5, d = Math.sqrt(dx * dx + dy * dy) * 2;
+    const edge = Math.max(0, Math.max(Math.abs(dx), Math.abs(dy)) * 2 - 0.8) / 0.2; // 0 inside, 1 at the edge
+    const big = fbm(ux, uy, lands, 3, seed + 7);
+    const det = fbm(x, y, detailF, 5, seed);
+    let v: number;
+    if (shape === 'island') v = det * 0.85 + 0.35 - d * 0.75 + (big - 0.5) * 0.3 * Math.min(1, k - 1);
+    else if (shape === 'continent') v = (big - 0.5) * 1.3 + (det - 0.5) * 0.8 + 0.36 - edge * edge * 0.5;
+    else if (shape === 'archipelago') v = (det - 0.5) + (big - 0.5) * 0.9 + 0.38 - d * 0.3;
+    else v = Math.pow(det * 0.75 + big * 0.35, 1.6) * 1.5;
     h[y * N + x] = Math.max(0, Math.min(1, v));
   }
   return h;
 }
+
+/** starting height for a new map: mountains keep about the same real height on every size */
+export const defaultHeight = (N: number) => Math.round(22 * Math.pow(worldSize(N) / 100, 0.25));
 
 /** Heights from an image: light = high, dark = low */
 export async function heightsFromImage(src: string, N: number): Promise<Float32Array> {

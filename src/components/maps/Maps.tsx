@@ -10,7 +10,7 @@ import { go } from '../../nav';
 import { registerFlush } from '../../saveRegistry';
 import { saveBinary, safeName } from '../../util';
 import {
-  BIOMES, MAP_SIZES, MAX_N, OBJECTS, applyBrush, decodeHeights, decodeU8, encode, encodeHeights, expandMap, generate, heightsFromImage, objDef, sizeLabel, smoothAll, worldSize,
+  BIOMES, MAP_SIZES, MAX_N, OBJECTS, applyBrush, decodeHeights, decodeU8, encode, encodeHeights, expandMap, generate, heightsFromImage, objDef, sizeLabel, smoothAll, defaultHeight,
   type MapObject, type ObjKind, type Pin, type Shape, type Tool,
 } from '../../mapdata';
 import type { Rect } from './Terrain3D';
@@ -67,7 +67,7 @@ function NewMapDialog({ projectId, onClose }: { projectId: string; onClose: () =
     } else heights = generate(N, shape);
     const id = await createEntity(projectId, 'map', name.trim() || (shape === 'picture' ? 'Map' : 'New world'), {
       size: N, heights: encodeHeights(heights), hfmt: 'u16', paint: encode(new Uint8Array(N * N)), seaLevel: shape === 'picture' ? (raise ? 0.18 : 0) : 0.3,
-      heightScale: shape === 'picture' && !raise ? 2 : Math.round(22 * Math.sqrt(worldSize(N) / 100)),
+      heightScale: shape === 'picture' && !raise ? 2 : defaultHeight(N),
       aspect: shape === 'picture' ? aspect : 1, image: picture ?? undefined, useImage: shape === 'picture', lowPoly: true, view: shape === 'picture' ? '2d' : '3d', pins: [], objects: [],
     });
     onClose();
@@ -268,7 +268,7 @@ function MapEditor({ map }: { map: Entity }) {
     heights.current = h; paint.current = p; undo.current = [];
     const objects = objsRef.current.map((o) => ({ ...o, u: remap(o.u), v: remap(o.v), ...(o.u2 !== undefined ? { u2: remap(o.u2), v2: remap(o.v2 ?? o.v) } : {}) }));
     objsRef.current = objects; setObjs(objects);
-    await set({ size: N2, heights: encodeHeights(h), hfmt: 'u16', paint: encode(p), pins: pins.map((x) => ({ ...x, u: remap(x.u), v: remap(x.v) })), objects, heightScale: Math.max(heightScale, Math.round(22 * Math.sqrt(worldSize(N2) / 100))) });
+    await set({ size: N2, heights: encodeHeights(h), hfmt: 'u16', paint: encode(p), pins: pins.map((x) => ({ ...x, u: remap(x.u), v: remap(x.v) })), objects });
     full(); setVersion((v) => v + 1); setRegen(false);
     toast(`The map is now ${sizeLabel(N2)}`);
   };

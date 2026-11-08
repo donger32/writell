@@ -75,7 +75,16 @@ export function Terrain3D(p: TerrainProps) {
     const renderNow = () => { cancelAnimationFrame(rq); rq = 0; renderer.render(scene, camera); labels.render(scene, camera); };
     let rq = 0;
     const render = () => { if (!rq) rq = requestAnimationFrame(renderNow); };
-    controls.addEventListener('change', render);
+    controls.screenSpacePanning = false; // right-drag slides along the ground, so you can travel across big worlds
+    controls.addEventListener('change', () => {
+      // stay over the map, and let the haze follow how far out you are
+      const { W, D } = dims(); const t = controls.target;
+      const cx = Math.max(-W / 2, Math.min(W / 2, t.x)), cz = Math.max(-D / 2, Math.min(D / 2, t.z));
+      if (cx !== t.x || cz !== t.z) { camera.position.x += cx - t.x; camera.position.z += cz - t.z; t.x = cx; t.z = cz; }
+      const dist = camera.position.distanceTo(t), fog = scene.fog as THREE.Fog;
+      fog.near = dist * 1.6; fog.far = dist * 3.4;
+      render();
+    });
 
     const resize = () => {
       const w = el.clientWidth, h = el.clientHeight;
@@ -195,10 +204,12 @@ export function Terrain3D(p: TerrainProps) {
       s.land.add(mesh); s.chunks.push({ mesh, x0, y0, x1, y1 });
     }
     // camera, fog and limits follow the size of the world
-    const fog = s.scene.fog as THREE.Fog; fog.near = S0 * 2.4; fog.far = S0 * 4.6;
+    // start close enough to see the land properly; scroll out to see the whole world
+    const F = Math.min(S0, worldSize(160)); // the same view as a small map
     s.camera.far = S0 * 10; s.camera.updateProjectionMatrix();
     s.controls.maxDistance = S0 * 3.2;
-    s.camera.position.set(0, S0 * 0.85, S0 * 1.1); s.controls.target.set(0, 0, 0); s.controls.update();
+    s.camera.position.set(0, F * 0.85, F * 1.1); s.controls.target.set(0, 0, 0); s.controls.update();
+    { const fog = s.scene.fog as THREE.Fog, dist = s.camera.position.distanceTo(s.controls.target); fog.near = dist * 1.6; fog.far = dist * 3.4; }
     p.dirtyRef.current = null;
   }, [geoKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
