@@ -2,6 +2,12 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.17.4 — remove tool for maps
+
+No database changes.
+
+- **Remove tool (X)** on maps: click or drag over buildings, walls, bridges, trees, rocks and anything else you placed to take them away, in 3D or 2D. The brush size sets how much it catches; one Ctrl+Z brings back everything from that drag.
+
 ## Changes in v0.17.3 — much bigger map sizes
 
 No database changes.

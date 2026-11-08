@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import {
-  Plus, Pencil, Trash2, Box, Square, Hand, ArrowUp, ArrowDown, Waves, Minus, Paintbrush, MapPin, Wand2, ImagePlus, Download, X, ExternalLink, Undo2, Home, MousePointer2, Maximize, RotateCw, Copy,
+  Plus, Pencil, Trash2, Box, Square, Hand, ArrowUp, ArrowDown, Waves, Minus, Paintbrush, MapPin, Wand2, ImagePlus, Download, X, ExternalLink, Undo2, Home, MousePointer2, Eraser, Maximize, RotateCw, Copy,
 } from 'lucide-react';
 import { db, uid, type Entity } from '../../db';
 import { createEntity, deleteEntity, updateEntity, pickImage } from '../../entities';
@@ -113,6 +113,7 @@ const TOOLS: { id: Tool; label: string; icon: typeof Hand; key: string }[] = [
   { id: 'pin', label: 'Place pin', icon: MapPin, key: 'M' },
   { id: 'object', label: 'Place buildings & nature', icon: Home, key: 'B' },
   { id: 'select', label: 'Select & move things', icon: MousePointer2, key: 'E' },
+  { id: 'erase', label: 'Remove things (drag over buildings, walls, trees…)', icon: Eraser, key: 'X' },
 ];
 
 type Snap = { h: Float32Array; p: Uint8Array; o: MapObject[] };
@@ -186,7 +187,28 @@ function MapEditor({ map }: { map: Entity }) {
     window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
   });
 
+  // the remove tool: takes away every placed thing under the brush (one Ctrl+Z brings them all back)
+  const erasedThisStroke = useRef(false);
+  const eraseAt = (cx: number, cy: number, first: boolean) => {
+    if (first) erasedThisStroke.current = false;
+    const r = Math.max(2, brush), M = N - 1;
+    const near = (o: MapObject) => {
+      const ax = o.u * M, ay = o.v * M;
+      if (o.u2 === undefined) return Math.hypot(ax - cx, ay - cy) <= r;
+      // walls and bridges: the closest point along the piece
+      const bx = o.u2 * M, by = (o.v2 ?? o.v) * M, dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+      const t = L ? Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy) / L)) : 0;
+      return Math.hypot(ax + t * dx - cx, ay + t * dy - cy) <= r;
+    };
+    const keep = objsRef.current.filter((o) => !near(o));
+    if (keep.length === objsRef.current.length) return;
+    if (!erasedThisStroke.current) { snap(); erasedThisStroke.current = true; }
+    if (selObj && !keep.some((o) => o.id === selObj)) setSelObj(null);
+    changeObjs(keep);
+  };
+
   const onStroke = (cx: number, cy: number, first: boolean) => {
+    if (tool === 'erase') { eraseAt(cx, cy, first); return; }
     if (first) { snap(); const i = Math.round(cy) * N + Math.round(cx); flatTo.current = heights.current[i] ?? 0.4; }
     applyBrush(heights.current, paint.current, N, cx, cy, tool, brush, strength, biome, flatTo.current);
     // only the part under the brush needs redrawing
@@ -194,7 +216,7 @@ function MapEditor({ map }: { map: Entity }) {
     if (r) { r.x0 = Math.min(r.x0, cx - brush - 1); r.y0 = Math.min(r.y0, cy - brush - 1); r.x1 = Math.max(r.x1, cx + brush + 1); r.y1 = Math.max(r.y1, cy + brush + 1); }
     dirty.current = true; setVersion((v) => v + 1);
   };
-  const onStrokeEnd = () => later();
+  const onStrokeEnd = () => { if (tool !== 'erase') later(); };
   const doUndo = () => {
     const u = undo.current.pop(); if (!u) return;
     heights.current = u.h; paint.current = u.p; dirty.current = true;
@@ -287,7 +309,7 @@ function MapEditor({ map }: { map: Entity }) {
         <span className="tb-sep" />
         {tool !== 'view' && tool !== 'pin' && tool !== 'object' && tool !== 'select' && <>
           <label className="mini-range"><span>Size</span><input type="range" min={2} max={maxBrush} value={brush} onChange={(e) => setBrush(+e.target.value)} /></label>
-          {tool !== 'paint' && <label className="mini-range"><span>Strength</span><input type="range" min={0.1} max={1.5} step={0.05} value={strength} onChange={(e) => setStrength(+e.target.value)} /></label>}
+          {tool !== 'paint' && tool !== 'erase' && <label className="mini-range"><span>Strength</span><input type="range" min={0.1} max={1.5} step={0.05} value={strength} onChange={(e) => setStrength(+e.target.value)} /></label>}
         </>}
         {tool === 'paint' && <div className="biomes">{BIOMES.map((b) => (
           <button key={b.id} className={'biome' + (biome === b.id ? ' on' : '')} title={b.id === 0 ? 'Erase paint (color by height)' : b.name} aria-label={b.name} onClick={() => setBiome(b.id)}
@@ -311,6 +333,7 @@ function MapEditor({ map }: { map: Entity }) {
           <div className="map-hint muted small">
             {tool === 'object' ? (objDef(kind).line ? (pendingLine ? `Click where the ${objDef(kind).label.toLowerCase()} ends · Esc to stop` : `Click where the ${objDef(kind).label.toLowerCase()} starts`) : `Click to place a ${objDef(kind).label.toLowerCase()}`)
               : tool === 'select' ? 'Click a thing to select it · drag to move · , and . to turn · Delete to remove'
+              : tool === 'erase' ? 'Click or drag over things to remove them · [ ] brush size · Ctrl+Z brings them back'
               : view === '3d' ? (tool === 'view' ? 'Drag to orbit · right-drag to pan · scroll to zoom' + (N > 160 ? ' · arrow keys to travel' : '') : 'Left-drag to use the tool · right-drag to orbit · [ ] brush size') : (tool === 'view' ? 'Drag to pan · scroll to zoom · drag pins to move them' : 'Left-drag to use the tool · right-drag to pan · [ ] brush size')}
           </div>
         </div>
@@ -343,7 +366,7 @@ function MapEditor({ map }: { map: Entity }) {
                   ))}</div>
                 </div>
               ))}
-              <p className="muted small">{objDef(kind).line ? 'Click a start point, then an end point. Walls keep going from where the last piece ended; press Esc to stop.' : 'Click the land to place it. Use the select tool (E) to move, turn, resize, recolor or remove things.'}</p>
+              <p className="muted small">{objDef(kind).line ? 'Click a start point, then an end point. Walls keep going from where the last piece ended; press Esc to stop.' : 'Click the land to place it. Use the select tool (E) to move, turn, resize or recolor things, and the remove tool (X) to take them away.'}</p>
             </div>
           )}
           <h4>Pins</h4>

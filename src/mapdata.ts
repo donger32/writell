@@ -215,7 +215,7 @@ export function smoothAll(h: Float32Array, N: number, passes: number) {
 }
 
 /* ---------- brushes (grid coordinates) ---------- */
-export type Tool = 'view' | 'raise' | 'lower' | 'smooth' | 'flatten' | 'paint' | 'pin' | 'object' | 'select';
+export type Tool = 'view' | 'raise' | 'lower' | 'smooth' | 'flatten' | 'paint' | 'pin' | 'object' | 'select' | 'erase';
 
 export function applyBrush(h: Float32Array, paint: Uint8Array, N: number, cx: number, cy: number, tool: Tool, radius: number, strength: number, biome: number, flatTo: number) {
   const r2 = radius * radius;
