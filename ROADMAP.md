@@ -2,6 +2,12 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.17.10 — publisher name
+
+No database changes.
+
+- Windows' installed-apps list now shows **Writell** as the publisher instead of the old name "inkwell" (the app's internal id is unchanged, so updates and saved data are unaffected).
+
 ## Changes in v0.17.9 — owner's statistics cleanup
 
 No database changes.
