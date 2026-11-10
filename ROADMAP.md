@@ -2,6 +2,12 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.17.11 — readable page for web filters
+
+No database changes.
+
+- The website's page now carries a short plain description of Writell (and a page description), so web filters and link previews can tell what it is instead of seeing an empty page. It shows for a moment while the app loads; the tab title stays "Writell".
+
 ## Changes in v0.17.10 — publisher name
 
 No database changes.

@@ -78,4 +78,5 @@ new MutationObserver(() => {
   document.querySelectorAll<HTMLElement>('button[title]:not([aria-label])').forEach((b) => { if (!b.textContent?.trim()) b.setAttribute('aria-label', b.title); });
 }).observe(document.body, { childList: true, subtree: true });
 
+document.title = 'Writell'; // the longer title in index.html is for anything that reads the page without running it
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);

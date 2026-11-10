@@ -11,10 +11,21 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Writell" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>Writell</title>
+    <title>Writell: a free app for writing novels</title>
+    <meta name="description" content="Writell is a free writing app for novelists and students: write chapters and scenes, plan characters, worldbuilding, timelines and maps, track word-count goals, and write together with friends." />
+    <meta property="og:title" content="Writell" />
+    <meta property="og:description" content="A free app for writing novels: chapters, characters, worldbuilding, timelines, maps and writing goals." />
+    <meta property="og:type" content="website" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- shown for a moment while the app loads (and to anything that reads the page without running it) -->
+      <main style="font: 15px/1.6 system-ui, sans-serif; color: #9a9aa6; background: #16171b; min-height: 100vh; margin: 0; padding: 48px 24px; box-sizing: border-box;">
+        <h1 style="color: #e8e8ee; font-size: 22px; margin: 0 0 8px;">Writell</h1>
+        <p style="max-width: 560px; margin: 0;">A free writing app for novels and stories. Write chapters and scenes, keep notes on characters and places, build timelines, family trees and maps of your world, and set word-count goals. Projects can be shared with friends to write and comment together.</p>
+        <noscript><p>Writell needs JavaScript turned on.</p></noscript>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
