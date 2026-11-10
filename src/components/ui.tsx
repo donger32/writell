@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { ChevronDown, Dices } from 'lucide-react';
+import { NAME_STYLES, getNameStyle, makeName, setNameStyle } from '../names';
 
 /* ---------- Promise-based dialogs (native confirm/prompt are unreliable in desktop webviews) ---------- */
 
 type Dialog =
   | { kind: 'confirm'; title: string; body?: string; danger?: boolean; ok: string; resolve: (v: boolean) => void }
-  | { kind: 'prompt'; title: string; value: string; ok: string; resolve: (v: string | null) => void };
+  | { kind: 'prompt'; title: string; value: string; ok: string; names?: boolean; resolve: (v: string | null) => void };
 
 let dialog: Dialog | null = null;
 const dl = new Set<() => void>();
@@ -13,8 +15,8 @@ const setDialog = (d: Dialog | null) => { dialog = d; dl.forEach((l) => l()); };
 export const confirmDialog = (title: string, body?: string, opts: { danger?: boolean; ok?: string } = {}) =>
   new Promise<boolean>((resolve) => setDialog({ kind: 'confirm', title, body, danger: opts.danger, ok: opts.ok ?? 'OK', resolve }));
 
-export const promptDialog = (title: string, value = '', ok = 'Save') =>
-  new Promise<string | null>((resolve) => setDialog({ kind: 'prompt', title, value, ok, resolve }));
+export const promptDialog = (title: string, value = '', ok = 'Save', opts: { names?: boolean } = {}) =>
+  new Promise<string | null>((resolve) => setDialog({ kind: 'prompt', title, value, ok, names: opts.names, resolve }));
 
 export function DialogHost() {
   const d = useSyncExternalStore((l) => { dl.add(l); return () => dl.delete(l); }, () => dialog);
@@ -34,7 +36,9 @@ export function DialogHost() {
       <div className="dialog" role="alertdialog" aria-modal="true" aria-label={d.title} onKeyDown={(e) => { trapFocus(e); if (e.key === 'Escape') close(false); if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') close(true); }}>
         <h3>{d.title}</h3>
         {d.kind === 'confirm' && d.body && <p className="muted">{d.body}</p>}
-        {d.kind === 'prompt' && <input ref={inputRef} className="input" value={val} onChange={(e) => setVal(e.target.value)} autoFocus />}
+        {d.kind === 'prompt' && (d.names
+          ? <div className="row gap-s"><input ref={inputRef} className="input grow" value={val} onChange={(e) => setVal(e.target.value)} autoFocus /><NameDice onName={(n) => { setVal(n); inputRef.current?.focus(); }} /></div>
+          : <input ref={inputRef} className="input" value={val} onChange={(e) => setVal(e.target.value)} autoFocus />)}
         <div className="row end gap">
           <button className="btn ghost" onClick={() => close(false)}>Cancel</button>
           <button className={'btn ' + (d.kind === 'confirm' && d.danger ? 'danger' : 'primary')} onClick={() => close(true)} autoFocus={d.kind === 'confirm'}>{d.ok}</button>
@@ -175,3 +179,18 @@ export const COLOR_PALETTE = [
   '#e06c75', '#f0506e', '#e8925a', '#f2a541', '#e8c547', '#c9d64a', '#8bc34a', '#5fbf8f', '#2bb3a3', '#4fc1e9',
   '#5fa8f5', '#4a7ce8', '#8b7cf6', '#a66cff', '#d17ad8', '#f472b6', '#b5876b', '#8d6e63', '#9aa0aa', '#5d6470',
 ];
+
+/* ---------- name dice: a random made-up name, in the style picked from the little arrow ---------- */
+export function NameDice({ onName, size = 15 }: { onName: (name: string) => void; size?: number }) {
+  const [style, setStyle] = useState(getNameStyle);
+  const label = NAME_STYLES.find((s) => s.id === style)?.label ?? '';
+  return (
+    <span className="name-dice">
+      <button type="button" className="icon-btn" title={`Random ${label.toLowerCase()} name`} aria-label={`Random ${label.toLowerCase()} name`} onClick={() => onName(makeName(style))}><Dices size={size} /></button>
+      <button type="button" className="icon-btn name-dice-style" title={`Name style: ${label}`} aria-label="Name style"
+        onClick={(e) => openMenu(e, NAME_STYLES.map((s) => ({ label: (s.id === style ? '✓ ' : '') + s.label, hint: s.hint, onClick: () => { setStyle(s.id); setNameStyle(s.id); onName(makeName(s.id)); } })))}>
+        <ChevronDown size={12} />
+      </button>
+    </span>
+  );
+}

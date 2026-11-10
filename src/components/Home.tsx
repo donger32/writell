@@ -1,5 +1,6 @@
+import { editDescription } from './DescPop';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, Star, MoreHorizontal, Upload, FileUp, Pencil, Copy, Archive, Trash2, ArchiveRestore, Share2, Users, LogOut, Link2 } from 'lucide-react';
+import { Plus, Star, MoreHorizontal, Upload, FileUp, Pencil, Copy, Archive, Trash2, ArchiveRestore, Share2, Users, LogOut, Link2, AlignLeft } from 'lucide-react';
 import { sharedRole, useSharedRoles } from '../sync/engine';
 import { leaveProject, stopSharing, ROLE_LABEL } from '../social/share';
 import { db, duplicateProject, type Project } from '../db';
@@ -33,6 +34,7 @@ async function runImport(kind: 'backup' | 'manuscript' | 'docx') {
 export function projectMenu(e: React.MouseEvent, p: Project) {
   openMenu(e, [
     { label: 'Rename', icon: <Pencil size={14} />, onClick: async () => { const t = await promptDialog('Rename project', p.title); if (t) db.projects.update(p.id, { title: t }); } },
+    { label: p.description?.trim() ? 'Edit description…' : 'Add a description…', icon: <AlignLeft size={14} />, onClick: () => editDescription(`Description of “${p.title}”`, p.description ?? '', (v) => db.projects.update(p.id, { description: v })) },
     { label: sharedRole(p.id) ? 'Sharing…' : 'Share…', icon: <Share2 size={14} />, onClick: () => setNav({ shareFor: p.id }) },
     { label: p.favorite ? 'Remove from favorites' : 'Add to favorites', icon: <Star size={14} />, onClick: () => db.projects.update(p.id, { favorite: !p.favorite }) },
     { label: 'Duplicate', icon: <Copy size={14} />, onClick: async () => { await duplicateProject(p.id); toast('Project duplicated'); } },
@@ -68,6 +70,7 @@ function ProjectCard({ p, words }: { p: Project; words: number }) {
           </button>
           <button className="icon-btn sm" onClick={(e) => { e.stopPropagation(); projectMenu(e, p); }}><MoreHorizontal size={14} /></button>
         </div>
+        {!!p.description?.trim() && <p className="card-desc" title={p.description}>{p.description}</p>}
         <div className="muted small">{fmtNum(words)} words · edited {timeAgo(p.updatedAt)}</div>
         {pct !== null && <div className="progress" title={`${pct}% of ${fmtNum(p.goalWords)}`}><div style={{ width: pct + '%' }} /></div>}
       </div>

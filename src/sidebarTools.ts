@@ -3,6 +3,7 @@ export const PROJECT_TOOLS = [
   { id: 'characters', label: 'Character' },
   { id: 'world', label: 'Worldbuilding' },
   { id: 'notes', label: 'Notes' },
+  { id: 'glossary', label: 'Glossary' },
   { id: 'tasks', label: 'Tasks' },
   { id: 'maps', label: 'Map' },
   { id: 'family', label: 'Tree' },

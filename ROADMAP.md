@@ -2,6 +2,21 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.18.0 — real-size maps, roads & rivers, journeys, glossary, ebooks
+
+No database changes.
+
+- **Maps look much better in 3D:** a sky with haze in the distance, a sun with real shadows, cliffs that turn to bare rock and snow that only settles where the ground is gentle, see-through water that glints, and fine ground detail up close.
+- **Real sizes:** a house is about 10 m wide and mountains are hundreds of meters to kilometers tall, so ten houses no longer stack up to a mountain. Zoom aims at the mouse and goes close enough to stand next to a house (and further out on big maps than before); the camera never ends up inside a hill.
+- **Higher height limit:** land can rise about four times higher than before, so peaks don't flatten into white plateaus. (Maps that never go above the old limit keep the old format.)
+- **Paths & water:** drag across the land to draw a dirt path, road, city street or river; it follows the ground. Select one to change its width or color; the remove tool takes it away.
+- **New things to place:** barn, temple, windmill, lighthouse, ruins, statue, boat, bush, and fences (two clicks, like walls).
+- **Journeys:** draw where a character travels as a dashed line with stops, tie each stop to a scene, and pick a point in the story to see where everyone is by then. Shown in 3D and 2D.
+- **Glossary** (new sidebar page): made-up words and what they mean. They're underlined in your writing; point at one to see its meaning.
+- **Name dice:** a dice button next to a character's name (and in the New character box) makes up a name; the little arrow picks a style (Everyday, Fantasy, Elvish, Harsh, Nordic, Ancient, Sci-fi).
+- **Descriptions:** a project's description shows on its card; point at a chapter or scene in the sidebar to see its description in a little box (cut off with "…"; click to read and edit it all). Right-click a chapter, scene or project to add one.
+- **Ebook export (.epub)** in Export: chapters, a table of contents and the cover picture, for phones, tablets and e-readers.
+
 ## Changes in v0.17.13 — map page crash fix
 
 No database changes.

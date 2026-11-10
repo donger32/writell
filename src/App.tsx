@@ -30,6 +30,8 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { CharactersView } from './components/story/Characters';
 import { WorldView } from './components/story/World';
 import { NotesView, QuickNote } from './components/story/Notes';
+import { GlossaryView } from './components/story/Glossary';
+import { DescEditorHost } from './components/DescPop';
 import { SearchView } from './components/story/SearchView';
 import { closeTab } from './nav';
 import { matches, combo } from './shortcuts';
@@ -213,6 +215,7 @@ export default function App() {
         {route.view === 'characters' && <CharactersView projectId={route.projectId} entityId={route.entityId} />}
         {route.view === 'world' && <WorldView projectId={route.projectId} entityId={route.entityId} category={route.category} />}
         {route.view === 'notes' && <NotesView projectId={route.projectId} entityId={route.entityId} filter={route.filter} />}
+        {route.view === 'glossary' && <GlossaryView projectId={route.projectId} entityId={route.entityId} />}
         {route.view === 'search' && <SearchView projectId={route.projectId} q={route.q} />}
         {route.view === 'statistics' && <StatsView scope={route.scope} />}
         {route.view === 'trash' && <TrashView />}
@@ -265,6 +268,7 @@ export default function App() {
       {nav.quickNote && <QuickNote projectId={'projectId' in route ? route.projectId : null} onClose={() => setNav({ quickNote: false })} />}
       <EffectsLayer />
       <DialogHost />
+      <DescEditorHost />
       <MenuHost />
       <ToastHost />
     </div>

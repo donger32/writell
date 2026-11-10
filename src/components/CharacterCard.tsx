@@ -24,7 +24,39 @@ function blurb(fields: Record<string, unknown>) {
   return '';
 }
 
-export function CharacterHoverCard({ anchor, projectId, onEnter, onLeave }: { anchor: CardAnchor; projectId: string; onEnter: () => void; onLeave: () => void }) {
+export function CharacterHoverCard(props: { anchor: CardAnchor; projectId: string; onEnter: () => void; onLeave: () => void }) {
+  return props.anchor.id.startsWith('term:') ? <TermCard {...props} /> : <CharCard {...props} />;
+}
+
+/** The card for a glossary word: what it means, and how else it's written */
+function TermCard({ anchor, projectId, onEnter, onLeave }: { anchor: CardAnchor; projectId: string; onEnter: () => void; onLeave: () => void }) {
+  const id = anchor.id.slice(5);
+  const t = useLiveQuery(() => db.entities.get(id), [id]);
+  const ref = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; below: boolean } | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current; if (!el) return;
+    const w = el.offsetWidth, h = el.offsetHeight, r = anchor.rect;
+    const below = r.bottom + h + 12 < innerHeight || r.top - h - 12 < 0;
+    setPos({ left: Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)), top: below ? r.bottom + 8 : r.top - h - 8, below });
+  }, [anchor, t]);
+  if (!t) return null;
+  const def = String(t.fields.definition ?? '').trim();
+  const aka = String(t.fields.aliases ?? '').trim();
+  return (
+    <button ref={ref} className={'char-card term-card' + (pos?.below === false ? ' above' : '')} style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999 }}
+      onMouseEnter={onEnter} onMouseLeave={onLeave} onMouseDown={(e) => e.preventDefault()}
+      onClick={() => { onLeave(); go({ view: 'glossary', projectId, entityId: t.id }); }} aria-label={`Open ${t.name} in the glossary`}>
+      <span className="char-card-body">
+        <span className="char-card-name">{t.name}<ArrowUpRight size={13} className="char-card-go" /></span>
+        {(t.fields.category || aka) ? <span className="char-card-meta">{t.fields.category ? <span>{String(t.fields.category)}</span> : null}{aka ? <span>also {aka}</span> : null}</span> : null}
+        <span className="char-card-text">{def ? (def.length > 260 ? def.slice(0, 255).replace(/\s+\S*$/, '') + '…' : def) : <em className="muted">No meaning written yet.</em>}</span>
+      </span>
+    </button>
+  );
+}
+
+function CharCard({ anchor, projectId, onEnter, onLeave }: { anchor: CardAnchor; projectId: string; onEnter: () => void; onLeave: () => void }) {
   const c = useLiveQuery(() => db.entities.get(anchor.id), [anchor.id]);
   const ref = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number; below: boolean } | null>(null);
@@ -74,13 +106,14 @@ export function useMentionHover(root: React.RefObject<HTMLElement | null>, enabl
   useEffect(() => {
     const el = root.current; if (!el || !enabled) { setAnchor(null); return; }
     const over = (e: MouseEvent) => {
-      const m = (e.target as HTMLElement).closest?.('.char-mention') as HTMLElement | null;
+      const m = (e.target as HTMLElement).closest?.('.char-mention, .term-mention') as HTMLElement | null;
       if (!m || e.buttons) return;
       window.clearTimeout(hide.current); window.clearTimeout(show.current);
-      show.current = window.setTimeout(() => setAnchor({ id: m.dataset.char!, rect: m.getBoundingClientRect() }), 280);
+      const id = m.dataset.term ? 'term:' + m.dataset.term : m.dataset.char!;
+      show.current = window.setTimeout(() => setAnchor({ id, rect: m.getBoundingClientRect() }), 280);
     };
     const out = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest?.('.char-mention')) return;
+      if (!(e.target as HTMLElement).closest?.('.char-mention, .term-mention')) return;
       window.clearTimeout(show.current);
       hide.current = window.setTimeout(() => setAnchor(null), 220);
     };

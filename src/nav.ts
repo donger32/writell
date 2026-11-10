@@ -12,6 +12,7 @@ export type Route =
   | { view: 'characters'; projectId: string; entityId?: string }
   | { view: 'world'; projectId: string; entityId?: string; category?: string }
   | { view: 'notes'; projectId: string; entityId?: string; filter?: string }
+  | { view: 'glossary'; projectId: string; entityId?: string }
   | { view: 'search'; projectId: string; q?: string }
   | { view: 'family'; projectId: string; entityId?: string }
   | { view: 'relationships'; projectId: string }

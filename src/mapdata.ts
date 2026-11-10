@@ -5,7 +5,8 @@
  *   size: N (grid is N×N), heights: base64 Float32Array (0..1), paint: base64 Uint8Array (biome per cell, 0 = automatic),
  *   seaLevel: 0..1, heightScale: number, image?: dataURL, useImage: boolean (show picture instead of biome colours),
  *   pins: Pin[] (u,v in 0..1, same in both views), view: '2d' | '3d', lowPoly: boolean,
- *   hfmt?: 'u16' (heights stored as 16-bit numbers: half the size), objects?: MapObject[]
+ *   hfmt?: 'u16' (16-bit heights 0..1) | 'u16h4' (16-bit heights 0..HMAX, used once land rises above 1), objects?: MapObject[],
+ *   journeys?: Journey[]
  * }
  */
 
@@ -23,24 +24,80 @@ export const worldSize = (N: number) => (100 * (N - 1)) / 159;
 /** the size name, or the nearest one for maps made when the sizes were different */
 export const sizeLabel = (N: number) => MAP_SIZES.reduce((a, b) => (Math.abs(Math.log(b.N / N)) < Math.abs(Math.log(a.N / N)) ? b : a)).label;
 
+/* ---------- real-world scale ---------- */
+/** one 3D unit is about this many meters (a map cell is ~25 m; a small map is ~4 km across) */
+export const METERS = 40;
+/** how high land can be raised (1 = the old limit) */
+export const HMAX = 4;
+
 /* ---------- things you can place ---------- */
-export type ObjKind = 'house' | 'cottage' | 'tower' | 'castle' | 'wall' | 'bridge' | 'tent' | 'well' | 'flag' | 'tree' | 'pine' | 'rock';
-export interface MapObject { id: string; kind: ObjKind; u: number; v: number; u2?: number; v2?: number; rot: number; scale: number; color?: string }
-export const OBJECTS: { kind: ObjKind; label: string; group: string; line?: boolean; color: string }[] = [
-  { kind: 'house', label: 'House', group: 'Buildings', color: '#c9b18a' },
-  { kind: 'cottage', label: 'Cottage', group: 'Buildings', color: '#d8c7a0' },
-  { kind: 'tower', label: 'Tower', group: 'Buildings', color: '#9a958c' },
-  { kind: 'castle', label: 'Castle', group: 'Buildings', color: '#a7a198' },
-  { kind: 'tent', label: 'Tent', group: 'Buildings', color: '#d9c9a3' },
-  { kind: 'well', label: 'Well', group: 'Buildings', color: '#8f8a82' },
-  { kind: 'wall', label: 'Wall', group: 'Lines', line: true, color: '#8f8a82' },
-  { kind: 'bridge', label: 'Bridge', group: 'Lines', line: true, color: '#8a6a48' },
-  { kind: 'tree', label: 'Tree', group: 'Nature', color: '#3f7d3a' },
-  { kind: 'pine', label: 'Pine', group: 'Nature', color: '#2d5e3a' },
-  { kind: 'rock', label: 'Rock', group: 'Nature', color: '#8d8a86' },
-  { kind: 'flag', label: 'Flag', group: 'Markers', color: '#e06c75' },
+export type ObjKind =
+  | 'house' | 'cottage' | 'barn' | 'tower' | 'castle' | 'temple' | 'windmill' | 'lighthouse' | 'tent' | 'well' | 'ruins' | 'statue' | 'boat'
+  | 'wall' | 'fence' | 'bridge'
+  | 'path' | 'road' | 'street' | 'river'
+  | 'tree' | 'pine' | 'bush' | 'rock' | 'flag';
+export interface MapObject {
+  id: string; kind: ObjKind; u: number; v: number; u2?: number; v2?: number; rot: number; scale: number; color?: string;
+  /** drawn lines (paths, roads, rivers): the points as u,v pairs */
+  pts?: number[];
+}
+/**
+ * line: two clicks (start, end). stroke: drawn by dragging (paths, roads, rivers).
+ * real: how big the model is drawn (models are built about 10× too big; this brings them to real size).
+ * fp: footprint [w, d] in model units, for the 2D view. width: line width in meters.
+ */
+export const OBJECTS: { kind: ObjKind; label: string; group: string; line?: boolean; stroke?: boolean; color: string; real: number; fp?: [number, number]; round?: boolean; width?: number }[] = [
+  { kind: 'house', label: 'House', group: 'Buildings', color: '#c9b18a', real: 0.1, fp: [2.4, 2] },
+  { kind: 'cottage', label: 'Cottage', group: 'Buildings', color: '#d8c7a0', real: 0.1, fp: [1.6, 1.4] },
+  { kind: 'barn', label: 'Barn', group: 'Buildings', color: '#9b4a3c', real: 0.1, fp: [3.2, 2.2] },
+  { kind: 'tower', label: 'Tower', group: 'Buildings', color: '#9a958c', real: 0.12, fp: [1.6, 1.6], round: true },
+  { kind: 'castle', label: 'Castle', group: 'Buildings', color: '#a7a198', real: 0.25, fp: [5.6, 5.6] },
+  { kind: 'temple', label: 'Temple', group: 'Buildings', color: '#ddd5c4', real: 0.14, fp: [3.2, 4.4] },
+  { kind: 'windmill', label: 'Windmill', group: 'Buildings', color: '#e2d8c3', real: 0.12, fp: [1.6, 1.6], round: true },
+  { kind: 'lighthouse', label: 'Lighthouse', group: 'Buildings', color: '#f2efe8', real: 0.14, fp: [1.4, 1.4], round: true },
+  { kind: 'tent', label: 'Tent', group: 'Buildings', color: '#d9c9a3', real: 0.08, fp: [2.2, 2.2], round: true },
+  { kind: 'well', label: 'Well', group: 'Buildings', color: '#8f8a82', real: 0.08, fp: [1.1, 1.1], round: true },
+  { kind: 'ruins', label: 'Ruins', group: 'Buildings', color: '#a39c90', real: 0.12, fp: [3.4, 3] },
+  { kind: 'statue', label: 'Statue', group: 'Buildings', color: '#c7c2b8', real: 0.08, fp: [1.2, 1.2] },
+  { kind: 'boat', label: 'Boat', group: 'Buildings', color: '#8a6a48', real: 0.1, fp: [3, 1] },
+  { kind: 'path', label: 'Dirt path', group: 'Paths & water', stroke: true, color: '#a5875f', real: 1, width: 3 },
+  { kind: 'road', label: 'Road', group: 'Paths & water', stroke: true, color: '#9a8f80', real: 1, width: 7 },
+  { kind: 'street', label: 'City street', group: 'Paths & water', stroke: true, color: '#6f6b67', real: 1, width: 12 },
+  { kind: 'river', label: 'River', group: 'Paths & water', stroke: true, color: '#3f7fb4', real: 1, width: 24 },
+  { kind: 'wall', label: 'Wall', group: 'Lines', line: true, color: '#8f8a82', real: 0.1 },
+  { kind: 'fence', label: 'Fence', group: 'Lines', line: true, color: '#8a6a48', real: 0.1 },
+  { kind: 'bridge', label: 'Bridge', group: 'Lines', line: true, color: '#8a6a48', real: 0.1 },
+  { kind: 'tree', label: 'Tree', group: 'Nature', color: '#3f7d3a', real: 0.1, fp: [1.9, 1.9], round: true },
+  { kind: 'pine', label: 'Pine', group: 'Nature', color: '#2d5e3a', real: 0.13, fp: [1.7, 1.7], round: true },
+  { kind: 'bush', label: 'Bush', group: 'Nature', color: '#4c8a3f', real: 0.08, fp: [1.4, 1.4], round: true },
+  { kind: 'rock', label: 'Rock', group: 'Nature', color: '#8d8a86', real: 0.12, fp: [1.6, 1.6], round: true },
+  { kind: 'flag', label: 'Flag', group: 'Markers', color: '#e06c75', real: 0.1, fp: [0.6, 0.6], round: true },
 ];
-export const objDef = (k: ObjKind) => OBJECTS.find((o) => o.kind === k)!;
+export const objDef = (k: ObjKind) => OBJECTS.find((o) => o.kind === k) ?? OBJECTS[0];
+/** width of a drawn line (path, road, river) in 3D units */
+export const strokeWidth = (o: MapObject) => ((objDef(o.kind).width ?? 5) / METERS) * o.scale;
+/** the points of a drawn line as [u, v] pairs */
+export const strokePts = (o: MapObject): [number, number][] => { const p = o.pts ?? []; const out: [number, number][] = []; for (let i = 0; i + 1 < p.length; i += 2) out.push([p[i], p[i + 1]]); return out; };
+
+/** Smooth a line through points (Catmull-Rom), returning about `per` points per segment */
+export function smoothLine(pts: [number, number][], per = 6): [number, number][] {
+  if (pts.length < 3) return pts.slice();
+  const out: [number, number][] = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    for (let s = 0; s < per; s++) {
+      const t = s / per, t2 = t * t, t3 = t2 * t;
+      const f = (a: number, b: number, c: number, d: number) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+
+/** Where a character travels: stops on the map, each optionally tied to a scene */
+export interface JourneyStop { id: string; u: number; v: number; sceneId?: string }
+export interface Journey { id: string; name: string; characterId?: string; color: string; stops: JourneyStop[] }
 
 export interface Pin { id: string; u: number; v: number; label: string; entityId?: string; color: string }
 
@@ -63,38 +120,64 @@ export const BIOMES: { id: number; name: string; color: [number, number, number]
 export const DEEP: [number, number, number] = [28, 64, 110];
 export const SHALLOW: [number, number, number] = [56, 120, 168];
 
-export function autoColor(h: number, sea: number): [number, number, number] {
+/**
+ * Colour by height, and by steepness when it's known (slope = rise over run):
+ * cliffs turn to bare rock, and snow only settles where the ground is gentle enough to hold it.
+ */
+export function autoColor(h: number, sea: number, slope = 0): [number, number, number] {
   if (h < sea) { const t = Math.max(0, Math.min(1, (sea - h) / 0.25)); return mix(SHALLOW, DEEP, t); }
   const a = (h - sea) / Math.max(0.0001, 1 - sea);
-  if (a < 0.04) return BIOMES[3].color;
-  if (a < 0.35) return mix(BIOMES[1].color, BIOMES[2].color, a / 0.35);
-  if (a < 0.62) return mix(BIOMES[2].color, BIOMES[5].color, (a - 0.35) / 0.27);
-  if (a < 0.82) return mix(BIOMES[5].color, [150, 146, 140], (a - 0.62) / 0.2);
-  return BIOMES[6].color;
+  let c: [number, number, number];
+  if (a < 0.04) c = BIOMES[3].color;
+  else if (a < 0.35) c = mix(BIOMES[1].color, BIOMES[2].color, a / 0.35);
+  else if (a < 0.62) c = mix(BIOMES[2].color, BIOMES[5].color, (a - 0.35) / 0.27);
+  else if (a < 0.82) c = mix(BIOMES[5].color, [150, 146, 140], (a - 0.62) / 0.2);
+  else c = slope > 0.9 ? [150, 146, 140] : BIOMES[6].color;
+  if (slope > 0.75 && a >= 0.04) {
+    const rock: [number, number, number] = a > 0.82 ? [138, 134, 130] : [118, 110, 102];
+    c = mix(c, rock, Math.min(1, (slope - 0.75) / 0.6));
+  }
+  return c;
 }
 const mix = (a: [number, number, number], b: [number, number, number], t: number): [number, number, number] => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 
-export function cellColor(h: number, paint: number, sea: number): [number, number, number] {
+export function cellColor(h: number, paint: number, sea: number, slope = 0): [number, number, number] {
   if (h < sea && paint !== 12 && paint !== 11) return autoColor(h, sea);
-  return paint ? BIOMES[paint]?.color ?? autoColor(h, sea) : autoColor(h, sea);
+  return paint ? BIOMES[paint]?.color ?? autoColor(h, sea, slope) : autoColor(h, sea, slope);
+}
+/** steepness (rise over run, real units) at a grid cell, for a given height scale */
+export function slopeAt(h: Float32Array, N: number, x: number, y: number, hs: number) {
+  const cell = 100 / 159; // 3D units per cell
+  const at = (xx: number, yy: number) => h[Math.max(0, Math.min(N - 1, yy)) * N + Math.max(0, Math.min(N - 1, xx))];
+  const gx = (at(x + 1, y) - at(x - 1, y)) * hs / (2 * cell), gy = (at(x, y + 1) - at(x, y - 1)) * hs / (2 * cell);
+  return Math.hypot(gx, gy);
+}
+/** gentle colour variation so big areas don't look like flat plastic (0.9 .. 1.1) */
+export function colorJitter(x: number, y: number) {
+  return 0.93 + 0.1 * noise(x * 0.31, y * 0.31, 77) + 0.04 * hash(x, y, 5);
 }
 
 /* ---------- encoding ---------- */
 /** heights as 16-bit numbers (plenty of detail, half the size of 32-bit) */
-export function encodeHeights(h: Float32Array): string {
+export function encodeHeights(h: Float32Array): string { return heightFields(h).heights; }
+/** heights + their format: maps whose land never rises above 1 keep the old format, so older versions can still open them */
+export function heightFields(h: Float32Array): { heights: string; hfmt: 'u16' | 'u16h4' } {
+  let top = 0; for (let i = 0; i < h.length; i++) if (h[i] > top) top = h[i];
+  const range = top > 1 ? HMAX : 1;
   const u = new Uint16Array(h.length);
-  for (let i = 0; i < h.length; i++) u[i] = Math.round(Math.max(0, Math.min(1, h[i])) * 65535);
-  return encode(new Uint8Array(u.buffer));
+  for (let i = 0; i < h.length; i++) u[i] = Math.round(Math.max(0, Math.min(range, h[i])) / range * 65535);
+  return { heights: encode(new Uint8Array(u.buffer)), hfmt: range > 1 ? 'u16h4' : 'u16' };
 }
 export function decodeHeights(b64: string | undefined, n: number, fmt?: unknown): Float32Array {
-  if (fmt !== 'u16') return decodeF32(b64, n);
+  if (fmt !== 'u16' && fmt !== 'u16h4') return decodeF32(b64, n);
+  const range = fmt === 'u16h4' ? HMAX : 1;
   if (!b64) return new Float32Array(n);
   const bin = atob(b64); const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   const u = new Uint16Array(bytes.buffer, 0, Math.floor(bytes.length / 2));
   if (u.length !== n) return new Float32Array(n);
   const out = new Float32Array(n);
-  for (let i = 0; i < n; i++) out[i] = u[i] / 65535;
+  for (let i = 0; i < n; i++) out[i] = (u[i] / 65535) * range;
   return out;
 }
 
@@ -164,7 +247,7 @@ export type Shape = 'island' | 'archipelago' | 'continent' | 'mountains' | 'flat
  */
 export function generate(N: number, shape: Shape, seed = Math.floor(Math.random() * 1e9)): Float32Array {
   const h = new Float32Array(N * N);
-  if (shape === 'flat') return h.fill(0.32);
+  if (shape === 'flat') return h.fill(0.36); // just above the sea: grass to build on
   const k = N / 160; // how many small maps fit across
   const lands = shape === 'continent' ? 1.4 + k * 0.55 : shape === 'island' ? 1.2 + k * 0.25 : 1.2 + k * 0.35;
   const detailF = (shape === 'archipelago' ? 5 : shape === 'mountains' ? 4 : 3) / 160;
@@ -215,7 +298,7 @@ export function smoothAll(h: Float32Array, N: number, passes: number) {
 }
 
 /* ---------- brushes (grid coordinates) ---------- */
-export type Tool = 'view' | 'raise' | 'lower' | 'smooth' | 'flatten' | 'paint' | 'pin' | 'object' | 'select' | 'erase';
+export type Tool = 'view' | 'raise' | 'lower' | 'smooth' | 'flatten' | 'paint' | 'pin' | 'object' | 'select' | 'erase' | 'journey';
 
 export function applyBrush(h: Float32Array, paint: Uint8Array, N: number, cx: number, cy: number, tool: Tool, radius: number, strength: number, biome: number, flatTo: number) {
   const r2 = radius * radius;
@@ -228,7 +311,7 @@ export function applyBrush(h: Float32Array, paint: Uint8Array, N: number, cx: nu
     const fall = 1 - Math.sqrt(d2) / radius;
     const w = fall * fall * strength;
     const i = y * N + x;
-    if (tool === 'raise') h[i] = Math.min(1, h[i] + 0.02 * w);
+    if (tool === 'raise') h[i] = Math.min(HMAX, h[i] + 0.02 * w);
     else if (tool === 'lower') h[i] = Math.max(0, h[i] - 0.02 * w);
     else if (tool === 'flatten') h[i] += (flatTo - h[i]) * Math.min(1, w * 0.4);
     else if (tool === 'smooth') {
@@ -240,11 +323,12 @@ export function applyBrush(h: Float32Array, paint: Uint8Array, N: number, cx: nu
 }
 
 /** Draw the map top-down (with hill shading) into a canvas — used by the 2D view and thumbnails */
-export function renderTopDown(ctx: CanvasRenderingContext2D, h: Float32Array, paint: Uint8Array, N: number, sea: number, shade = true) {
+export function renderTopDown(ctx: CanvasRenderingContext2D, h: Float32Array, paint: Uint8Array, N: number, sea: number, shade = true, hs = 0) {
   const img = ctx.createImageData(N, N);
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     const i = y * N + x;
-    let [r, g, b] = cellColor(h[i], paint[i], sea);
+    let [r, g, b] = cellColor(h[i], paint[i], sea, hs ? slopeAt(h, N, x, y, hs) : 0);
+    if (h[i] >= sea) { const j = colorJitter(x, y); r *= j; g *= j; b *= j; }
     if (shade && h[i] >= sea) {
       const dx = (h[y * N + Math.min(N - 1, x + 1)] - h[y * N + Math.max(0, x - 1)]);
       const dy = (h[Math.min(N - 1, y + 1) * N + x] - h[Math.max(0, y - 1) * N + x]);

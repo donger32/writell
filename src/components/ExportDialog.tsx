@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
-import { FileText, FileType, FileDown, Printer } from 'lucide-react';
+import { FileText, FileType, FileDown, Printer, BookOpen } from 'lucide-react';
 import { db } from '../db';
 import { DEFAULT_EXPORT, MANUSCRIPT_PRESET, exportManuscript, pdfHint, type ExportOptions } from '../manuscript';
 import { Modal, toast } from './ui';
@@ -8,6 +8,7 @@ import { Modal, toast } from './ui';
 const FORMATS = [
   { id: 'docx', label: 'Word', ext: '.docx', icon: FileType },
   { id: 'pdf', label: 'PDF', ext: 'print', icon: Printer },
+  { id: 'epub', label: 'Ebook', ext: '.epub', icon: BookOpen },
   { id: 'md', label: 'Markdown', ext: '.md', icon: FileDown },
   { id: 'txt', label: 'Plain text', ext: '.txt', icon: FileText },
 ] as const;
@@ -15,7 +16,7 @@ const FORMATS = [
 export function ExportDialog({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const project = useLiveQuery(() => db.projects.get(projectId), [projectId]);
   const chapters = useLiveQuery(() => db.chapters.where('projectId').equals(projectId).sortBy('order'), [projectId]);
-  const [fmt, setFmt] = useState<'docx' | 'pdf' | 'md' | 'txt'>('docx');
+  const [fmt, setFmt] = useState<'docx' | 'pdf' | 'md' | 'txt' | 'epub'>('docx');
   const [o, setO] = useState<ExportOptions | null>(null);
   const [busy, setBusy] = useState(false);
   if (!project || !chapters) return null;
@@ -57,6 +58,7 @@ export function ExportDialog({ projectId, onClose }: { projectId: string; onClos
           </div>
           <div className="row gap wrap">
             <label className="check"><input type="checkbox" checked={opts.titlePage} onChange={(e) => set({ titlePage: e.target.checked })} /> Title page</label>
+            {fmt === 'epub' && <label className="check"><input type="checkbox" checked={opts.indentParagraphs} onChange={(e) => set({ indentParagraphs: e.target.checked })} /> Indent paragraphs (book style)</label>}
             {(fmt === 'docx' || fmt === 'pdf') && <>
               <label className="check"><input type="checkbox" checked={opts.pageBreaks} onChange={(e) => set({ pageBreaks: e.target.checked })} /> New page for each chapter</label>
               <label className="check"><input type="checkbox" checked={opts.indentParagraphs} onChange={(e) => set({ indentParagraphs: e.target.checked })} /> Indent paragraphs (book style)</label>
@@ -75,6 +77,7 @@ export function ExportDialog({ projectId, onClose }: { projectId: string; onClos
             </div>
           </div>
           {fmt === 'pdf' && <p className="muted small">{pdfHint()}</p>}
+          {fmt === 'epub' && <p className="muted small">An ebook you can read on a phone, tablet or e-reader (Apple Books, Google Play Books, Kobo; for a Kindle, use Amazon's Send to Kindle). Each chapter starts a new page, with a table of contents{project.coverImage ? ' and your cover picture' : ''}.</p>}
           <div className="row end gap-s"><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || (sel !== null && !sel.length)} onClick={run}>{fmt === 'pdf' ? 'Open print dialog' : 'Export'}</button></div>
         </div>
       </div>

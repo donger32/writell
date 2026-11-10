@@ -39,7 +39,7 @@ import { promptDialog, STATUS_COLOR, STATUS_LABEL, toast } from './ui';
 import { FindReplace } from './FindReplace';
 import { HistoryPanel } from './HistoryPanel';
 import { SceneStoryLinks } from './story/links';
-import { mentionNames, mentionsKey, type MentionName } from '../editor/mentions';
+import { mentionNames, mentionsKey, termNames, type MentionName } from '../editor/mentions';
 import { CharacterHoverCard, useMentionHover } from './CharacterCard';
 
 type SaveState = 'saved' | 'saving' | 'unsaved' | 'error';
@@ -101,6 +101,7 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
   const reading = nav.reading;
   // character names in the text → hover cards
   const chars = useLiveQuery(() => db.entities.where('[projectId+kind]').equals([scene.projectId, 'character']).toArray(), [scene.projectId]);
+  const terms = useLiveQuery(() => db.entities.where('[projectId+kind]').equals([scene.projectId, 'term']).toArray(), [scene.projectId]);
   const namesRef = useRef<MentionName[]>([]);
   const cardsRef = useRef(s.charCards);
   cardsRef.current = s.charCards;
@@ -216,9 +217,9 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
   }, [flush]);
 
   useEffect(() => { editor?.setEditable(!reading && raw === null, false); }, [editor, reading, raw]);
-  const nameKey = chars ? JSON.stringify(chars.map((c) => [c.id, c.name, c.fields.nicknames, c.fields.color])) : '';
+  const nameKey = chars ? JSON.stringify([chars.map((c) => [c.id, c.name, c.fields.nicknames, c.fields.color]), (terms ?? []).map((t) => [t.id, t.name, t.fields.aliases])]) : '';
   useEffect(() => {
-    namesRef.current = chars ? mentionNames(chars) : [];
+    namesRef.current = chars ? [...mentionNames(chars), ...termNames(terms ?? [])] : [];
     if (editor && !editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(mentionsKey, true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, nameKey, s.charCards]);

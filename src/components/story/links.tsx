@@ -8,7 +8,7 @@ import { Avatar, Picker, useProjectOptions, type PickOption } from './common';
 type Opts = NonNullable<ReturnType<typeof useProjectOptions>>;
 
 export function openEntity(e: Entity) {
-  const r = e.kind === 'character' ? 'characters' : e.kind === 'world' ? 'world' : 'notes';
+  const r = e.kind === 'character' ? 'characters' : e.kind === 'world' ? 'world' : e.kind === 'term' ? 'glossary' : 'notes';
   go({ view: r, projectId: e.projectId, entityId: e.id } as never);
 }
 

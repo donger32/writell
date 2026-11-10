@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import {
   Home, BookOpen, Star, Settings as Cog, HelpCircle, PanelLeftClose, PanelLeftOpen, Plus, ChevronRight,
-  FileText, Pencil, Copy, Trash2, Search, LayoutGrid, MessagesSquare, Shield, Columns2, FolderOpen, Users, Contact, Globe, StickyNote, Network, HeartHandshake, GanttChart, BarChart3, Map as MapIcon, Pin, PinOff, ListChecks, Clock,
+  FileText, Pencil, Copy, Trash2, Search, LayoutGrid, MessagesSquare, Shield, Columns2, FolderOpen, Users, Contact, BookA, AlignLeft, Globe, StickyNote, Network, HeartHandshake, GanttChart, BarChart3, Map as MapIcon, Pin, PinOff, ListChecks, Clock,
 } from 'lucide-react';
 import { orderedTools } from '../sidebarTools';
 import { SyncBadge } from './AccountSettings';
@@ -16,6 +16,7 @@ import { openEntity } from './story/links';
 import { type Entity, db, createChapter, createScene, duplicateChapter, reorderChapters, moveScene, type Chapter, type Scene } from '../db';
 import { deleteChapter, deleteScene } from '../trash';
 import { toastTrashed } from './TrashView';
+import { DescPeek, editDescription } from './DescPop';
 import { go, openProject, setNav, togglePanel, useNav, getRecentScenes, getRecentEntities } from '../nav';
 import { setSettings, useSettings, togglePin, isPinned } from '../settings';
 import { confirmDialog, openMenu, promptDialog, rowKeys, STATUS_COLOR, COLOR_PALETTE, Modal } from './ui';
@@ -116,6 +117,7 @@ export function Sidebar() {
                 world: { icon: Globe, view: 'world', badge: counts?.world ? String(counts.world) : undefined, go: () => go({ view: 'world', projectId: pid }) },
                 tasks: { icon: ListChecks, view: 'tasks', badge: openTasks ? String(openTasks) : undefined, go: () => go({ view: 'tasks', projectId: pid }) },
                 notes: { icon: StickyNote, view: 'notes', badge: counts?.inbox ? `${counts.inbox} new` : undefined, go: () => go({ view: 'notes', projectId: pid }) },
+                glossary: { icon: BookA, view: 'glossary', go: () => go({ view: 'glossary', projectId: pid }) },
                 maps: { icon: MapIcon, view: 'maps', go: () => go({ view: 'maps', projectId: pid }) },
                 family: { icon: Network, view: 'family', go: () => go({ view: 'family', projectId: pid }) },
                 relationships: { icon: HeartHandshake, view: 'relationships', go: () => go({ view: 'relationships', projectId: pid }) },
@@ -281,6 +283,20 @@ function Manuscript({ projectId }: { projectId: string }) {
   const [over, setOver] = useState<string | null>(null);
   const [colorFor, setColorFor] = useState<Chapter | null>(null);
   const activeScene = route.view === 'write' ? route.sceneId : null;
+  // pointing at a chapter or scene shows its description (if it has one) in a little box beside it
+  const [peek, setPeek] = useState<{ kind: 'chapter' | 'scene'; id: string; rect: DOMRect } | null>(null);
+  const peekT = useRef<number | undefined>(undefined);
+  const hoverOn = (kind: 'chapter' | 'scene', id: string, el: HTMLElement) => {
+    window.clearTimeout(peekT.current);
+    peekT.current = window.setTimeout(() => setPeek({ kind, id, rect: el.getBoundingClientRect() }), peek ? 120 : 450);
+  };
+  const hoverOff = () => { window.clearTimeout(peekT.current); peekT.current = window.setTimeout(() => setPeek(null), 180); };
+  useEffect(() => () => window.clearTimeout(peekT.current), []);
+  const describe = (kind: 'chapter' | 'scene', id: string, rect?: DOMRect) => {
+    setPeek(null);
+    if (kind === 'chapter') { const c = chapters?.find((x) => x.id === id); if (c) editDescription(`Description of “${c.title}”`, c.summary ?? '', (v) => db.chapters.update(c.id, { summary: v, updatedAt: Date.now() }), rect); }
+    else { const sc = scenes?.find((x) => x.id === id); if (sc) editDescription(`Description of “${sc.title || 'Untitled scene'}”`, sc.summary ?? '', (v) => db.scenes.update(sc.id, { summary: v }), rect); }
+  };
 
   if (!chapters || !scenes) return null;
   const byChapter = (id: string) => scenes.filter((s) => s.chapterId === id).sort((a, b) => a.order - b.order);
@@ -311,6 +327,7 @@ function Manuscript({ projectId }: { projectId: string }) {
   const chapterMenu = (e: React.MouseEvent, ch: Chapter, i: number) => openMenu(e, [
     { label: 'New scene', icon: <Plus size={14} />, onClick: async () => { const id = await createScene(ch.id); setOpen((o) => ({ ...o, [ch.id]: true })); go({ view: 'write', projectId, sceneId: id }); } },
     { label: 'Rename', icon: <Pencil size={14} />, onClick: async () => { const t = await promptDialog('Rename chapter', ch.title); if (t) db.chapters.update(ch.id, { title: t, updatedAt: Date.now() }); } },
+    { label: ch.summary?.trim() ? 'Edit description…' : 'Add a description…', icon: <AlignLeft size={14} />, onClick: () => describe('chapter', ch.id) },
     { label: 'Duplicate', icon: <Copy size={14} />, onClick: () => duplicateChapter(ch.id) },
     { label: 'Move up', onClick: () => { if (i > 0) { const ids = chapters.map((c) => c.id); [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]]; reorderChapters(ids); } } },
     { label: 'Move down', onClick: () => { if (i < chapters.length - 1) { const ids = chapters.map((c) => c.id); [ids[i + 1], ids[i]] = [ids[i], ids[i + 1]]; reorderChapters(ids); } } },
@@ -331,6 +348,7 @@ function Manuscript({ projectId }: { projectId: string }) {
     { label: 'Open in split view', icon: <Columns2 size={14} />, onClick: () => { if (route.view === 'write' && route.sceneId !== sc.id) go({ ...route, splitSceneId: sc.id }); else go({ view: 'write', projectId, sceneId: sc.id }); } },
     { label: isPinned({ kind: 'scene', id: sc.id }) ? 'Unpin from sidebar' : 'Pin to sidebar', icon: <Pin size={14} />, onClick: () => togglePin({ projectId, kind: 'scene', id: sc.id }) },
     { label: 'Rename', icon: <Pencil size={14} />, onClick: async () => { const t = await promptDialog('Rename scene', sc.title); if (t) db.scenes.update(sc.id, { title: t }); } },
+    { label: sc.summary?.trim() ? 'Edit description…' : 'Add a description…', icon: <AlignLeft size={14} />, onClick: () => describe('scene', sc.id) },
     { label: 'Delete scene', danger: true, icon: <Trash2 size={14} />, onClick: async () => {
       if (route.view === 'write' && (route.sceneId === sc.id || route.splitSceneId === sc.id)) go({ view: 'project', projectId });
       toastTrashed(sc.title, await deleteScene(sc.id));
@@ -344,7 +362,8 @@ function Manuscript({ projectId }: { projectId: string }) {
                 onDrop={(e) => dropOnScene(s, e)}
                 role="treeitem" tabIndex={0} aria-current={activeScene === s.id ? 'page' : undefined}
                 onKeyDown={rowKeys(() => go({ view: 'write', projectId, sceneId: s.id }), (el) => { const r = el.getBoundingClientRect(); sceneMenu({ clientX: r.left + 24, clientY: r.bottom, preventDefault() {}, stopPropagation() {} } as unknown as React.MouseEvent, s); })}
-                onClick={() => go({ view: 'write', projectId, sceneId: s.id })} onContextMenu={(e) => sceneMenu(e, s)}>
+                onClick={() => go({ view: 'write', projectId, sceneId: s.id })} onContextMenu={(e) => sceneMenu(e, s)}
+                onMouseEnter={(e) => s.summary?.trim() && hoverOn('scene', s.id, e.currentTarget)} onMouseLeave={hoverOff}>
                 <FileText size={13} />
                 <span className="grow ellipsis">{s.title}</span>
                 <span className="status-dot" title={s.status} style={{ background: STATUS_COLOR[s.status] }} />
@@ -370,7 +389,8 @@ function Manuscript({ projectId }: { projectId: string }) {
             <div className="tree-row ch" draggable onDragStart={() => setDrag({ type: 'chapter', id: ch.id })} onDragEnd={() => { setDrag(null); setOver(null); }}
               role="treeitem" aria-expanded={o} tabIndex={0}
               onKeyDown={rowKeys(() => setOpen((x) => ({ ...x, [ch.id]: !o })), (el) => { const r = el.getBoundingClientRect(); chapterMenu({ clientX: r.left + 24, clientY: r.bottom, preventDefault() {}, stopPropagation() {} } as unknown as React.MouseEvent, ch, i); })}
-              onClick={() => setOpen((x) => ({ ...x, [ch.id]: !o }))} onContextMenu={(e) => chapterMenu(e, ch, i)}>
+              onClick={() => setOpen((x) => ({ ...x, [ch.id]: !o }))} onContextMenu={(e) => chapterMenu(e, ch, i)}
+              onMouseEnter={(e) => ch.summary?.trim() && hoverOn('chapter', ch.id, e.currentTarget)} onMouseLeave={hoverOff}>
               <ChevronRight size={12} className={'chev' + (o ? ' open' : '')} />
               {ch.color && <span className="dot" style={{ background: ch.color }} />}
               <span className="grow ellipsis">{ch.title}</span>
@@ -390,6 +410,10 @@ function Manuscript({ projectId }: { projectId: string }) {
           {orphans.map(sceneRow)}
         </div>
       )}
+      {peek && (() => {
+        const text = peek.kind === 'chapter' ? chapters.find((c) => c.id === peek.id)?.summary : scenes.find((x) => x.id === peek.id)?.summary;
+        return text?.trim() ? <DescPeek text={text} rect={peek.rect} onEnter={() => window.clearTimeout(peekT.current)} onLeave={hoverOff} onOpen={() => describe(peek.kind, peek.id, peek.rect)} /> : null;
+      })()}
       {colorFor && <ColorDialog title={`Color for “${colorFor.title}”`} value={colorFor.color ?? ''} onClose={() => setColorFor(null)} onPick={(c) => { void db.chapters.update(colorFor.id, { color: c, updatedAt: Date.now() }); }} />}
     </div>
   );

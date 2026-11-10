@@ -5,7 +5,7 @@ import { safeName, saveFile, saveBinary } from './util';
 import { isTauri } from './platform';
 
 /* =====================================================================
- * Manuscript export with formatting options (Markdown, TXT, Word, PDF)
+ * Manuscript export with formatting options (Markdown, TXT, Word, PDF, EPUB ebook)
  * ===================================================================== */
 
 export interface ExportOptions {
@@ -47,7 +47,7 @@ async function gather(projectId: string, o: ExportOptions) {
   return { p, parts: chapters.map((c, i) => ({ title: heading(c.title, i, o), scenes: scenes.filter((s) => s.chapterId === c.id).sort((a, b) => a.order - b.order) })) };
 }
 
-export async function exportManuscript(projectId: string, format: 'md' | 'txt' | 'docx' | 'pdf', o: ExportOptions) {
+export async function exportManuscript(projectId: string, format: 'md' | 'txt' | 'docx' | 'pdf' | 'epub', o: ExportOptions) {
   const { p, parts } = await gather(projectId, o);
   const name = safeName(p.title);
   if (format === 'md') {
@@ -61,6 +61,7 @@ export async function exportManuscript(projectId: string, format: 'md' | 'txt' |
     return saveFile(`${name}.txt`, out.join('\n') + '\n');
   }
   if (format === 'pdf') return printPdf(p, parts, o);
+  if (format === 'epub') return exportEpub(p, parts, o);
   return exportDocx(p, parts, o);
 }
 
@@ -206,3 +207,103 @@ export async function importDocx(): Promise<string | null> {
 }
 
 export const pdfHint = () => (isTauri() ? 'In the print window choose “Microsoft Print to PDF” (or “Save as PDF”) as the printer.' : 'In the print window choose “Save as PDF” as the destination.');
+
+
+/* ---------- EPUB ebook (for phones, e-readers, Kindle via Send to Kindle, Apple Books…) ---------- */
+
+/** HTML from the editor, made into well-formed XHTML (what ebook readers require) */
+function toXhtml(html: string) {
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+  // review marks and comments are for writing, not for readers
+  doc.querySelectorAll('span[data-comment], span[data-flag], mark[data-comment]').forEach((el) => el.replaceWith(...Array.from(el.childNodes)));
+  const ser = new XMLSerializer();
+  return Array.from(doc.body.childNodes).map((n) => ser.serializeToString(n).replace(/ xmlns="http:\/\/www\.w3\.org\/1999\/xhtml"/g, '')).join('\n');
+}
+const xesc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]!));
+const page = (title: string, body: string, lang: string) => `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="${lang}" lang="${lang}">
+<head><meta charset="utf-8"/><title>${xesc(title)}</title><link rel="stylesheet" type="text/css" href="style.css"/></head>
+<body>
+${body}
+</body>
+</html>`;
+
+async function exportEpub(p: Project, parts: { title: string; scenes: { content: unknown }[] }[], o: ExportOptions) {
+  const { default: JSZip } = await import('jszip');
+  const ext = baseExtensions();
+  const lang = 'en';
+  const id = `urn:uuid:${p.id.replace(/[^a-z0-9-]/gi, '') || uid()}`;
+  const zip = new JSZip();
+  // the mimetype file must come first and be stored uncompressed
+  zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
+  zip.file('META-INF/container.xml', `<?xml version="1.0" encoding="utf-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`);
+  zip.file('OEBPS/style.css', `body { font-family: serif; line-height: 1.5; margin: 0 5%; }
+h1 { text-align: center; font-weight: normal; font-size: 1.5em; margin: 2em 0 1.5em; page-break-before: always; }
+p { margin: 0 0 ${o.indentParagraphs ? '0' : '0.8em'}; ${o.indentParagraphs ? 'text-indent: 1.5em;' : ''} }
+h1 + p, .sep + p, h2 + p, h3 + p, blockquote + p { text-indent: 0; }
+.sep { text-align: center; text-indent: 0; margin: 1em 0; }
+blockquote { margin: 0 1.5em; font-style: italic; }
+.title { text-align: center; margin-top: 30%; } .title h1 { page-break-before: auto; font-size: 2em; margin: 0 0 0.6em; } .title p { text-indent: 0; font-size: 1.1em; }
+.cover { text-align: center; margin: 0; padding: 0; } .cover img { max-width: 100%; max-height: 100%; }`);
+
+  const items: { id: string; href: string; type: string; props?: string; linear?: boolean }[] = [];
+  const toc: { title: string; href: string }[] = [];
+  // a cover picture, if the project has one
+  if (p.coverImage?.startsWith('data:image/')) {
+    const m = /^data:(image\/(png|jpeg|jpg|webp|gif));base64,(.*)$/.exec(p.coverImage);
+    if (m) {
+      const ext2 = m[2] === 'jpeg' ? 'jpg' : m[2];
+      zip.file(`OEBPS/cover.${ext2}`, m[3], { base64: true });
+      items.push({ id: 'cover-image', href: `cover.${ext2}`, type: m[1] === 'image/jpg' ? 'image/jpeg' : m[1], props: 'cover-image' });
+      zip.file('OEBPS/cover.xhtml', page('Cover', `<div class="cover"><img src="cover.${ext2}" alt="${xesc(p.title)}"/></div>`, lang));
+      items.push({ id: 'cover', href: 'cover.xhtml', type: 'application/xhtml+xml', linear: true });
+    }
+  }
+  if (o.titlePage) {
+    zip.file('OEBPS/title.xhtml', page(p.title, `<div class="title"><h1>${xesc(p.title)}</h1>${o.author ? `<p>by ${xesc(o.author)}</p>` : ''}</div>`, lang));
+    items.push({ id: 'title', href: 'title.xhtml', type: 'application/xhtml+xml' });
+  }
+  parts.forEach((ch, i) => {
+    const href = `chapter-${i + 1}.xhtml`;
+    const sep = `<p class="sep">${xesc(o.sceneSeparator) || '&#160;'}</p>`;
+    const body = ch.scenes.map((s) => toXhtml(generateHTML(withoutDeletions(s.content) as JSONContent, ext))).filter((x) => x.trim()).join(sep);
+    const name = ch.title || `Chapter ${i + 1}`;
+    zip.file(`OEBPS/${href}`, page(name, `<section epub:type="chapter">${ch.title ? `<h1>${xesc(ch.title)}</h1>` : ''}\n${body}</section>`, lang));
+    items.push({ id: `ch${i + 1}`, href, type: 'application/xhtml+xml' });
+    toc.push({ title: name, href });
+  });
+  zip.file('OEBPS/nav.xhtml', page('Contents', `<nav epub:type="toc" id="toc"><h1>Contents</h1><ol>${toc.map((t) => `<li><a href="${t.href}">${xesc(t.title)}</a></li>`).join('')}</ol></nav>`, lang));
+  // the older table of contents, for older readers
+  zip.file('OEBPS/toc.ncx', `<?xml version="1.0" encoding="utf-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head><meta name="dtb:uid" content="${id}"/></head>
+<docTitle><text>${xesc(p.title)}</text></docTitle>
+<navMap>${toc.map((t, i) => `<navPoint id="n${i + 1}" playOrder="${i + 1}"><navLabel><text>${xesc(t.title)}</text></navLabel><content src="${t.href}"/></navPoint>`).join('')}</navMap></ncx>`);
+  const modified = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+  zip.file('OEBPS/content.opf', `<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="${lang}">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="bookid">${id}</dc:identifier>
+    <dc:title>${xesc(p.title)}</dc:title>
+    ${o.author ? `<dc:creator>${xesc(o.author)}</dc:creator>` : ''}
+    <dc:language>${lang}</dc:language>
+    ${p.description ? `<dc:description>${xesc(p.description)}</dc:description>` : ''}
+    <meta property="dcterms:modified">${modified}</meta>
+    ${items.some((x) => x.id === 'cover-image') ? '<meta name="cover" content="cover-image"/>' : ''}
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="css" href="style.css" media-type="text/css"/>
+    ${items.map((x) => `<item id="${x.id}" href="${x.href}" media-type="${x.type}"${x.props ? ` properties="${x.props}"` : ''}/>`).join('\n    ')}
+  </manifest>
+  <spine toc="ncx">
+    ${items.filter((x) => x.type === 'application/xhtml+xml').map((x) => `<itemref idref="${x.id}"/>`).join('\n    ')}
+  </spine>
+</package>`);
+  const bytes = await zip.generateAsync({ type: 'uint8array', mimeType: 'application/epub+zip' });
+  return saveBinary(`${safeName(p.title)}.epub`, bytes, 'application/epub+zip');
+}

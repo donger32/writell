@@ -1,7 +1,7 @@
 {
   "name": "inkwell",
   "private": true,
-  "version": "0.17.13",
+  "version": "0.18.0",
   "description": "Writell: a writing app for novelists (desktop, web and phone)",
   "type": "module",
   "scripts": {
@@ -39,6 +39,7 @@
     "dexie-react-hooks": "^4.4.0",
     "diff": "^8.0.4",
     "docx": "^9.15.2",
+    "jszip": "^3.10.2",
     "lucide-react": "^1.69.0",
     "mammoth": "^1.13.0",
     "react": "^19.3.1",

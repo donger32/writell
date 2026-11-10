@@ -12,7 +12,7 @@ const CATS: { id: Cat; label: string; icon: typeof Search }[] = [
   { id: 'characters', label: 'Characters', icon: User }, { id: 'world', label: 'Places & world', icon: Globe },
   { id: 'notes', label: 'Notes', icon: StickyNote }, { id: 'other', label: 'Maps & more', icon: Link2 },
 ];
-const KIND_LABEL: Record<string, string> = { map: 'Map', familytree: 'Tree', relmap: 'Relation map', timeline: 'Timeline', event: 'Timeline event', task: 'Task' };
+const KIND_LABEL: Record<string, string> = { term: 'Glossary', map: 'Map', familytree: 'Tree', relmap: 'Relation map', timeline: 'Timeline', event: 'Timeline event', task: 'Task' };
 
 interface Hit { cat: Cat; title: string; sub?: string; snippet: string; where?: string; count: number; open: () => void }
 
@@ -62,7 +62,7 @@ export function SearchView({ projectId, q: initialQ }: { projectId: string; q?: 
     for (const e of data.entities) {
       const cat: Cat = e.kind === 'character' ? 'characters' : e.kind === 'world' ? 'world' : e.kind === 'note' ? 'notes' : 'other';
       // maps, trees and timelines hold drawings and positions, not text: only their name counts
-      const textual = e.kind === 'character' || e.kind === 'world' || e.kind === 'note' || e.kind === 'event' || e.kind === 'task';
+      const textual = e.kind === 'character' || e.kind === 'world' || e.kind === 'note' || e.kind === 'event' || e.kind === 'task' || e.kind === 'term';
       const custom = (e.fields.custom as { label: string; value: string }[] | undefined) ?? [];
       const parts = [
         { where: 'Name', text: e.name }, { where: 'Tags', text: e.tags.map((t) => '#' + t).join(' ') },

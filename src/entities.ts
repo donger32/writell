@@ -6,7 +6,7 @@ import { deleteSubjectEvents } from './trash';
  * connected through `links`. Adding a new kind = add a config here.
  */
 
-export type Kind = 'character' | 'world' | 'note' | 'event' | 'timeline' | 'familytree' | 'relmap' | 'comment' | 'map' | 'task';
+export type Kind = 'character' | 'world' | 'note' | 'event' | 'timeline' | 'familytree' | 'relmap' | 'comment' | 'map' | 'task' | 'term';
 
 export interface FieldDef { key: string; label: string; long?: boolean; placeholder?: string }
 export interface SectionDef { title: string; fields: FieldDef[] }

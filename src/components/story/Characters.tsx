@@ -4,7 +4,7 @@ import { db, uid, type Entity } from '../../db';
 import { CHARACTER_LAYOUTS, CHARACTER_ROLES, CHARACTER_SECTIONS, CHARACTER_STATUS, autoColor, createEntity, deleteEntity, duplicateEntity, layoutKeys, layoutName, updateEntity, type FieldDef, type LayoutChoice } from '../../entities';
 import { toastTrashed } from '../TrashView';
 import { go } from '../../nav';
-import { confirmDialog, openMenu, promptDialog, toast } from '../ui';
+import { NameDice, confirmDialog, openMenu, promptDialog, toast } from '../ui';
 import { ColorPick, Field, ImageBox, TagEditor, useProjectOptions } from './common';
 import { EntityShell, SideBox } from './EntityShell';
 import { NotesAbout, RelatedEntities, SceneLinks } from './links';
@@ -21,7 +21,7 @@ export function CharactersView({ projectId, entityId }: { projectId: string; ent
   if (!items || !opts) return null;
   const active = items.find((e) => e.id === entityId);
   const create = async () => {
-    const name = await promptDialog('New character', '', 'Create');
+    const name = await promptDialog('New character', '', 'Create', { names: true });
     if (!name) return;
     const id = await createEntity(projectId, 'character', name, { status: 'Alive', role: 'Supporting' });
     go({ view: 'characters', projectId, entityId: id });
@@ -93,6 +93,7 @@ function CharacterProfile({ e, opts }: { e: Entity; opts: NonNullable<ReturnType
           <div className="col gap-s grow" style={{ minWidth: 0 }}>
             <div className="row gap-s">
               <Field wrap className="name-field grow" value={e.name} onCommit={(v) => updateEntity(e.id, { name: v || 'Unnamed' })} />
+              <NameDice onName={(n) => { const old = e.name; updateEntity(e.id, { name: n }); toast(`Renamed to ${n}`, { label: `Undo`, run: () => updateEntity(e.id, { name: old }) }); }} />
               <button className="icon-btn" title="Favorite" onClick={() => updateEntity(e.id, { favorite: !e.favorite })}><Star size={16} className={e.favorite ? 'accent' : ''} fill={e.favorite ? 'currentColor' : 'none'} /></button>
               <button className="icon-btn" onClick={menu} title="More actions" aria-label="More actions"><MoreHorizontal size={16} /></button>
             </div>

@@ -32,7 +32,10 @@ function build(doc: PMNode, names: MentionName[], enabled: boolean): DecorationS
       const hit = byText.get(m[1]);
       if (!hit) continue;
       const from = pos + 1 + m.index!, to = from + m[1].length;
-      decos.push(Decoration.inline(from, to, enabled ? { class: 'char-mention', 'data-char': hit.id, spellcheck: 'false', ...(hit.color ? { style: `--mc:${hit.color}` } : {}) } : { spellcheck: 'false' }));
+      const term = hit.id.startsWith('term:');
+      decos.push(Decoration.inline(from, to, !enabled ? { spellcheck: 'false' }
+        : term ? { class: 'term-mention', 'data-term': hit.id.slice(5), spellcheck: 'false' }
+        : { class: 'char-mention', 'data-char': hit.id, spellcheck: 'false', ...(hit.color ? { style: `--mc:${hit.color}` } : {}) }));
     }
     return false;
   });
@@ -71,6 +74,24 @@ export function mentionNames(chars: { id: string; name: string; fields: Record<s
       const t = nick.trim().replace(/^["“']|["”']$/g, '');
       if (t.length >= 2) out.push({ id: c.id, text: t, color });
     }
+  }
+  return out;
+}
+
+/** Glossary words (and the other ways they're written) to underline in the text. Ids are prefixed "term:". */
+export function termNames(terms: { id: string; name: string; fields: Record<string, unknown> }[]): MentionName[] {
+  const out: MentionName[] = [];
+  const add = (id: string, t: string) => {
+    t = t.trim(); if (t.length < 2) return;
+    out.push({ id: 'term:' + id, text: t });
+    // also at the start of a sentence, or written in lower case in the middle of one
+    const up = t.charAt(0).toUpperCase() + t.slice(1), low = t.charAt(0).toLowerCase() + t.slice(1);
+    if (up !== t) out.push({ id: 'term:' + id, text: up });
+    if (low !== t) out.push({ id: 'term:' + id, text: low });
+  };
+  for (const e of terms) {
+    add(e.id, e.name);
+    for (const a of String(e.fields.aliases ?? '').split(/[,;\n]/)) add(e.id, a);
   }
   return out;
 }

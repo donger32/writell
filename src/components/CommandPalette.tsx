@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { BookOpen, FileText, Plus, Settings, Home, Crosshair, AlignVerticalJustifyCenter, Maximize2, Download, Search, Users, Contact, Trash2, Network, HeartHandshake, Globe, StickyNote } from 'lucide-react';
+import { BookOpen, FileText, Plus, Settings, Home, Crosshair, AlignVerticalJustifyCenter, Maximize2, Download, Search, Users, Contact, BookA, Trash2, Network, HeartHandshake, Globe, StickyNote } from 'lucide-react';
 import { createEntity } from '../entities';
 import { promptDialog } from './ui';
 import { openEntity } from './story/links';
@@ -69,6 +69,7 @@ export function CommandPalette() {
         { id: 'timelines', group: 'Go to', label: 'Timeline', also: 'Timelines', icon: <StickyNote size={14} />, run: () => go({ view: 'timelines', projectId }) },
         { id: 'world', group: 'Go to', label: 'Worldbuilding', icon: <Globe size={14} />, run: () => go({ view: 'world', projectId }) },
         { id: 'notes', group: 'Go to', label: 'Notes', icon: <StickyNote size={14} />, run: () => go({ view: 'notes', projectId }) },
+        { id: 'glossary', group: 'Go to', label: 'Glossary', also: 'Made-up words', icon: <BookA size={14} />, run: () => go({ view: 'glossary', projectId }) },
         { id: 'tasks', group: 'Go to', label: 'Tasks', icon: <StickyNote size={14} />, run: () => go({ view: 'tasks', projectId }) },
         { id: 'trash', group: 'Go to', label: 'Trash', icon: <Trash2 size={14} />, run: () => (projectId ? setNav({ panel: { view: 'trash' } }) : go({ view: 'trash' })) },
         { id: 'search', group: 'Go to', label: 'Search this project', hint: 'Ctrl+Shift+F', icon: <Search size={14} />, run: () => go({ view: 'search', projectId }) },

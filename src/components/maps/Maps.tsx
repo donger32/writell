@@ -4,16 +4,16 @@ import {
   Plus, Pencil, Trash2, Box, Square, Hand, ArrowUp, ArrowDown, Waves, Minus, Paintbrush, MapPin, Wand2, ImagePlus, Download, X, ExternalLink, Undo2, Home, MousePointer2, Eraser, SlidersHorizontal, Maximize, RotateCw, Copy,
 } from 'lucide-react';
 import { db, uid, type Entity } from '../../db';
-import { createEntity, deleteEntity, updateEntity, pickImage } from '../../entities';
+import { autoColor, createEntity, deleteEntity, updateEntity, pickImage } from '../../entities';
 import { toastTrashed } from '../TrashView';
 import { go } from '../../nav';
 import { registerFlush } from '../../saveRegistry';
 import { saveBinary, safeName } from '../../util';
 import {
-  BIOMES, MAP_SIZES, MAX_N, OBJECTS, applyBrush, decodeHeights, decodeU8, encode, encodeHeights, expandMap, generate, heightsFromImage, objDef, sizeLabel, smoothAll, defaultHeight,
-  type MapObject, type ObjKind, type Pin, type Shape, type Tool,
+  BIOMES, MAP_SIZES, MAX_N, OBJECTS, applyBrush, decodeHeights, decodeU8, encode, heightFields, expandMap, generate, heightsFromImage, objDef, sizeLabel, smoothAll, defaultHeight, strokePts,
+  type Journey, type MapObject, type ObjKind, type Pin, type Shape, type Tool,
 } from '../../mapdata';
-import type { Rect } from './Terrain3D';
+import type { JourneyDraw, Rect } from './Terrain3D';
 import { Modal, confirmDialog, promptDialog, toast } from '../ui';
 import { Picker, useProjectOptions } from '../story/common';
 import { openEntity } from '../story/links';
@@ -66,7 +66,7 @@ function NewMapDialog({ projectId, onClose }: { projectId: string; onClose: () =
       heights = raise ? await heightsFromImage(picture, N) : new Float32Array(N * N).fill(0.4);
     } else heights = generate(N, shape);
     const id = await createEntity(projectId, 'map', name.trim() || (shape === 'picture' ? 'Map' : 'New world'), {
-      size: N, heights: encodeHeights(heights), hfmt: 'u16', paint: encode(new Uint8Array(N * N)), seaLevel: shape === 'picture' ? (raise ? 0.18 : 0) : 0.3,
+      size: N, ...heightFields(heights), paint: encode(new Uint8Array(N * N)), seaLevel: shape === 'picture' ? (raise ? 0.18 : 0) : 0.3,
       heightScale: shape === 'picture' && !raise ? 2 : defaultHeight(N),
       aspect: shape === 'picture' ? aspect : 1, image: picture ?? undefined, useImage: shape === 'picture', lowPoly: true, view: shape === 'picture' ? '2d' : '3d', pins: [], objects: [],
     });
@@ -147,6 +147,9 @@ function MapEditor({ map }: { map: Entity }) {
   const pendingRef = useRef(pendingLine);
   const setPendingLine = (v: { u: number; v: number } | null) => { pendingRef.current = v; setPendingState(v); };
   const [regen, setRegen] = useState(false);
+  // journeys: the one being edited, and how far into the story to show them
+  const [selJ, setSelJ] = useState<string | null>(null);
+  const [storyPoint, setStoryPoint] = useState('');
   const flatTo = useRef(0.4);
   const dirty = useRef(false);
   const objsDirty = useRef(false);
@@ -156,6 +159,9 @@ function MapEditor({ map }: { map: Entity }) {
   const view = (f.view as '2d' | '3d') ?? '3d';
   const sea = Number(f.seaLevel ?? 0.3), heightScale = Number(f.heightScale ?? 22), aspect = Number(f.aspect ?? 1);
   const pins = (f.pins as Pin[]) ?? [];
+  const journeys = (f.journeys as Journey[] | undefined) ?? [];
+  const setJourneys = (next: Journey[]) => set({ journeys: next });
+  const editJ = journeys.find((j) => j.id === selJ);
   const set = (patch: Record<string, unknown>) => updateEntity(map.id, { fields: patch });
   const maxBrush = Math.min(120, Math.round(40 * Math.max(1, N / 160)));
 
@@ -163,7 +169,7 @@ function MapEditor({ map }: { map: Entity }) {
   const saveTimer = useRef<number | undefined>(undefined);
   const saveTerrain = () => {
     const patch: Record<string, unknown> = {};
-    if (dirty.current) { dirty.current = false; Object.assign(patch, { heights: encodeHeights(heights.current), hfmt: 'u16', paint: encode(paint.current) }); }
+    if (dirty.current) { dirty.current = false; Object.assign(patch, { ...heightFields(heights.current), paint: encode(paint.current) }); }
     if (objsDirty.current) { objsDirty.current = false; patch.objects = objsRef.current; }
     window.clearTimeout(saveTimer.current);
     if (Object.keys(patch).length) return set(patch);
@@ -177,7 +183,7 @@ function MapEditor({ map }: { map: Entity }) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]') || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === 'Escape') { setPendingLine(null); setSelObj(null); return; }
+      if (e.key === 'Escape') { setPendingLine(null); setSelObj(null); if (tool === 'journey') setTool('view'); return; }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selObj) { e.preventDefault(); snap(); changeObjs(objsRef.current.filter((o) => o.id !== selObj)); setSelObj(null); return; }
       if ((e.key === ',' || e.key === '.') && selObj) { snapOnce(); changeObjs(objsRef.current.map((o) => (o.id === selObj ? { ...o, rot: o.rot + (e.key === ',' ? -1 : 1) * Math.PI / 12 } : o))); return; }
       const t = TOOLS.find((x) => x.key.toLowerCase() === e.key.toLowerCase()); if (t) { setTool(t.id); setPendingLine(null); }
@@ -197,6 +203,15 @@ function MapEditor({ map }: { map: Entity }) {
     const r = Math.max(2, brush), M = N - 1;
     const near = (o: MapObject) => {
       const ax = o.u * M, ay = o.v * M;
+      if (o.pts) {
+        const ps = strokePts(o);
+        for (let i = 0; i + 1 < ps.length; i++) {
+          const [px, py] = [ps[i][0] * M, ps[i][1] * M], [qx, qy] = [ps[i + 1][0] * M, ps[i + 1][1] * M], dx = qx - px, dy = qy - py, L = dx * dx + dy * dy;
+          const t = L ? Math.max(0, Math.min(1, ((cx - px) * dx + (cy - py) * dy) / L)) : 0;
+          if (Math.hypot(px + t * dx - cx, py + t * dy - cy) <= r) return true;
+        }
+        return ps.length === 1 && Math.hypot(ps[0][0] * M - cx, ps[0][1] * M - cy) <= r;
+      }
       if (o.u2 === undefined) return Math.hypot(ax - cx, ay - cy) <= r;
       // walls and bridges: the closest point along the piece
       const bx = o.u2 * M, by = (o.v2 ?? o.v) * M, dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
@@ -210,8 +225,32 @@ function MapEditor({ map }: { map: Entity }) {
     changeObjs(keep);
   };
 
+  // drawing a path, road, street or river: drag across the land; points are kept about a cell apart
+  const drawing = useRef<string | null>(null);
+  const drawAt = (cx: number, cy: number, first: boolean) => {
+    const u = cx / (N - 1), v = cy / (N - 1);
+    if (u < 0 || v < 0 || u > 1 || v > 1) return;
+    if (first || !drawing.current) {
+      snap();
+      const o: MapObject = { id: uid(), kind, u, v, rot: 0, scale: 1, pts: [u, v] };
+      drawing.current = o.id; changeObjs([...objsRef.current, o]); return;
+    }
+    const o = objsRef.current.find((x) => x.id === drawing.current); if (!o?.pts) return;
+    const lu = o.pts[o.pts.length - 2], lv = o.pts[o.pts.length - 1];
+    if (Math.hypot((u - lu) * (N - 1), (v - lv) * (N - 1)) < 0.8) return;
+    changeObjs(objsRef.current.map((x) => (x.id === o.id ? { ...x, pts: [...o.pts!, u, v] } : x)));
+  };
+  const endDraw = () => {
+    const id = drawing.current; drawing.current = null; if (!id) return;
+    const o = objsRef.current.find((x) => x.id === id);
+    // a click without dragging doesn't make a line
+    if (o && (o.pts?.length ?? 0) < 4) { changeObjs(objsRef.current.filter((x) => x.id !== id)); undo.current.pop(); }
+  };
+  const drawLine = tool === 'object' && !!objDef(kind).stroke;
+
   const onStroke = (cx: number, cy: number, first: boolean) => {
     if (tool === 'erase') { eraseAt(cx, cy, first); return; }
+    if (drawLine) { drawAt(cx, cy, first); return; }
     if (first) { snap(); const i = Math.round(cy) * N + Math.round(cx); flatTo.current = heights.current[i] ?? 0.4; }
     applyBrush(heights.current, paint.current, N, cx, cy, tool, brush, strength, biome, flatTo.current);
     // only the part under the brush needs redrawing
@@ -219,7 +258,7 @@ function MapEditor({ map }: { map: Entity }) {
     if (r) { r.x0 = Math.min(r.x0, cx - brush - 1); r.y0 = Math.min(r.y0, cy - brush - 1); r.x1 = Math.max(r.x1, cx + brush + 1); r.y1 = Math.max(r.y1, cy + brush + 1); }
     dirty.current = true; setVersion((v) => v + 1);
   };
-  const onStrokeEnd = () => { if (tool !== 'erase') later(); };
+  const onStrokeEnd = () => { if (drawLine) { endDraw(); later(); return; } if (tool !== 'erase') later(); };
   const doUndo = () => {
     const u = undo.current.pop(); if (!u) return;
     heights.current = u.h; paint.current = u.p; dirty.current = true;
@@ -239,6 +278,12 @@ function MapEditor({ map }: { map: Entity }) {
   // placing things: one click for buildings and nature, two clicks (start, end) for walls and bridges
   const placeObject = (u: number, v: number) => {
     if (u < 0 || v < 0 || u > 1 || v > 1) return;
+    if (tool === 'journey') {
+      if (!editJ) return;
+      const prev = editJ.stops[editJ.stops.length - 1];
+      setJourneys(journeys.map((j) => (j.id === editJ.id ? { ...j, stops: [...j.stops, { id: uid(), u, v, ...(prev?.sceneId ? { sceneId: prev.sceneId } : {}) }] } : j)));
+      return;
+    }
     const def = objDef(kind);
     if (def.line) {
       const start = pendingRef.current;
@@ -258,7 +303,7 @@ function MapEditor({ map }: { map: Entity }) {
   const moveObject = (id: string, du: number, dv: number) => {
     if (!moveStart.current) { snap(); moveStart.current = true; }
     const clamp = (x: number) => Math.max(0, Math.min(1, x));
-    changeObjs(objsRef.current.map((o) => (o.id !== id ? o : { ...o, u: clamp(o.u + du), v: clamp(o.v + dv), ...(o.u2 !== undefined ? { u2: clamp(o.u2 + du), v2: clamp((o.v2 ?? o.v) + dv) } : {}) })));
+    changeObjs(objsRef.current.map((o) => (o.id !== id ? o : { ...o, u: clamp(o.u + du), v: clamp(o.v + dv), ...(o.u2 !== undefined ? { u2: clamp(o.u2 + du), v2: clamp((o.v2 ?? o.v) + dv) } : {}), ...(o.pts ? { pts: o.pts.map((x, i) => clamp(x + (i % 2 ? dv : du))) } : {}) })));
   };
   const endMove = () => { moveStart.current = false; later(); };
   const selected = objs.find((o) => o.id === selObj);
@@ -267,10 +312,19 @@ function MapEditor({ map }: { map: Entity }) {
   const snapOnce = () => { const now = Date.now(); if (now - lastEdit.current > 800) snap(); lastEdit.current = now; };
   const patchSel = (patch: Partial<MapObject>) => { if (selected) snapOnce(); if (selected) changeObjs(objsRef.current.map((o) => (o.id === selected.id ? { ...o, ...patch } : o))); };
 
+  const sceneIdx = new Map((opts?.sceneOpts ?? []).map((o, i) => [o.id, i]));
+  const pointIdx = storyPoint ? sceneIdx.get(storyPoint) ?? Infinity : Infinity;
+  const journeysDraw: JourneyDraw[] = journeys.map((j) => {
+    const stops: { u: number; v: number }[] = [];
+    for (const st of j.stops) { if (st.sceneId && (sceneIdx.get(st.sceneId) ?? -1) > pointIdx) break; stops.push(st); }
+    return { id: j.id, name: j.name, color: j.color, stops, selected: j.id === selJ };
+  });
+
   const shared = {
     N, heights: heights.current, paint: paint.current, sea, aspect, image: f.image as string | undefined, useImage: !!f.useImage,
     version, tool, brush, pins, selectedPin: sel, onStroke, onStrokeEnd: () => { onStrokeEnd(); endMove(); }, onPlacePin: placePin, onSelectPin: (id: string) => setSel(id), snapshotRef: snapshot,
     objects: objs, selectedObject: selObj, pendingLine, onPlaceObject: placeObject, onSelectObject: (id: string | null) => setSelObj(id), onMoveObject: moveObject,
+    drawLine, journeys: journeysDraw,
   };
 
   const raiseFromPicture = async () => {
@@ -293,7 +347,7 @@ function MapEditor({ map }: { map: Entity }) {
     heights.current = h; paint.current = p; undo.current = [];
     const objects = objsRef.current.map((o) => ({ ...o, u: remap(o.u), v: remap(o.v), ...(o.u2 !== undefined ? { u2: remap(o.u2), v2: remap(o.v2 ?? o.v) } : {}) }));
     objsRef.current = objects; setObjs(objects);
-    await set({ size: N2, heights: encodeHeights(h), hfmt: 'u16', paint: encode(p), pins: pins.map((x) => ({ ...x, u: remap(x.u), v: remap(x.v) })), objects });
+    await set({ size: N2, ...heightFields(h), paint: encode(p), pins: pins.map((x) => ({ ...x, u: remap(x.u), v: remap(x.v) })), objects });
     full(); setVersion((v) => v + 1); setRegen(false);
     toast(`The map is now ${sizeLabel(N2)}`);
   };
@@ -333,9 +387,11 @@ function MapEditor({ map }: { map: Entity }) {
         <div className="map-canvas">
           {view === '3d'
             ? <Terrain3D {...shared} heightScale={heightScale} lowPoly={!!f.lowPoly} dirtyRef={dirtyRect} />
-            : <Map2D {...shared} onMovePin={(id, u, v) => updatePin(id, { u, v })} />}
+            : <Map2D {...shared} heightScale={heightScale} onMovePin={(id, u, v) => updatePin(id, { u, v })} />}
           <div className="map-hint muted small">
-            {tool === 'object' ? (objDef(kind).line ? (pendingLine ? `Click where the ${objDef(kind).label.toLowerCase()} ends · Esc to stop` : `Click where the ${objDef(kind).label.toLowerCase()} starts`) : `Click to place a ${objDef(kind).label.toLowerCase()}`)
+            {tool === 'journey' ? (editJ ? `Click the map to add a stop to ${editJ.name}'s journey · Esc when done` : 'Pick a journey on the right')
+              : drawLine ? `Drag across the land to draw a ${objDef(kind).label.toLowerCase()}`
+              : tool === 'object' ? (objDef(kind).line ? (pendingLine ? `Click where the ${objDef(kind).label.toLowerCase()} ends · Esc to stop` : `Click where the ${objDef(kind).label.toLowerCase()} starts`) : `Click to place a ${objDef(kind).label.toLowerCase()}`)
               : tool === 'select' ? 'Click a thing to select it · drag to move · , and . to turn · Delete to remove'
               : tool === 'erase' ? 'Click or drag over things to remove them · [ ] brush size · Ctrl+Z brings them back'
               : view === '3d' ? (tool === 'view' ? 'Drag to orbit · right-drag to pan · scroll to zoom' + (N > 160 ? ' · arrow keys to travel' : '') : 'Left-drag to use the tool · right-drag to orbit · [ ] brush size') : (tool === 'view' ? 'Drag to pan · scroll to zoom · drag pins to move them' : 'Left-drag to use the tool · right-drag to pan · [ ] brush size')}
@@ -347,15 +403,15 @@ function MapEditor({ map }: { map: Entity }) {
           {selected && (
             <div className="pin-editor" key={selected.id}>
               <div className="row"><h4 className="grow">{objDef(selected.kind).label}</h4><button className="icon-btn sm" aria-label="Deselect" onClick={() => setSelObj(null)}><X size={12} /></button></div>
-              {!objDef(selected.kind).line && <label className="mini-range wide"><span><RotateCw size={11} /> Turn</span><input type="range" min={0} max={360} step={5} value={Math.round((((selected.rot * 180) / Math.PI) % 360 + 360) % 360)} onChange={(e) => patchSel({ rot: (+e.target.value * Math.PI) / 180 })} /></label>}
-              <label className="mini-range wide"><span><Maximize size={11} /> Size</span><input type="range" min={0.4} max={4} step={0.05} value={selected.scale} onChange={(e) => patchSel({ scale: +e.target.value })} /></label>
+              {!objDef(selected.kind).line && !objDef(selected.kind).stroke && <label className="mini-range wide"><span><RotateCw size={11} /> Turn</span><input type="range" min={0} max={360} step={5} value={Math.round((((selected.rot * 180) / Math.PI) % 360 + 360) % 360)} onChange={(e) => patchSel({ rot: (+e.target.value * Math.PI) / 180 })} /></label>}
+              <label className="mini-range wide"><span><Maximize size={11} /> {objDef(selected.kind).stroke ? 'Width' : 'Size'}</span><input type="range" min={0.25} max={objDef(selected.kind).stroke ? 8 : 6} step={0.05} value={selected.scale} onChange={(e) => patchSel({ scale: +e.target.value })} /></label>
               <div className="row gap-s wrap">
                 <button className={'swatch none' + (!selected.color ? ' on' : '')} title="Default color" onClick={() => patchSel({ color: undefined })}><X size={11} /></button>
                 {OBJ_COLORS.map((c) => <button key={c} className={'swatch' + (selected.color === c ? ' on' : '')} style={{ background: c }} aria-label={`Color ${c}`} onClick={() => patchSel({ color: c })} />)}
                 <input type="color" className="color-pick" value={selected.color ?? objDef(selected.kind).color} onChange={(e) => patchSel({ color: e.target.value })} aria-label="Any color" />
               </div>
               <div className="row gap-s">
-                <button className="btn sm" onClick={() => { snap(); const c = { ...selected, id: uid(), u: Math.min(1, selected.u + 0.02), v: Math.min(1, selected.v + 0.02), ...(selected.u2 !== undefined ? { u2: Math.min(1, selected.u2 + 0.02), v2: Math.min(1, (selected.v2 ?? selected.v) + 0.02) } : {}) }; changeObjs([...objsRef.current, c]); setSelObj(c.id); }}><Copy size={13} /> Copy</button>
+                <button className="btn sm" onClick={() => { snap(); const c = { ...selected, id: uid(), u: Math.min(1, selected.u + 0.02), v: Math.min(1, selected.v + 0.02), ...(selected.u2 !== undefined ? { u2: Math.min(1, selected.u2 + 0.02), v2: Math.min(1, (selected.v2 ?? selected.v) + 0.02) } : {}), ...(selected.pts ? { pts: selected.pts.map((x) => Math.min(1, x + 0.02)) } : {}) }; changeObjs([...objsRef.current, c]); setSelObj(c.id); }}><Copy size={13} /> Copy</button>
                 <button className="btn ghost sm danger-text" onClick={() => { snap(); changeObjs(objsRef.current.filter((o) => o.id !== selected.id)); setSelObj(null); }}><Trash2 size={13} /> Remove</button>
               </div>
             </div>
@@ -371,10 +427,53 @@ function MapEditor({ map }: { map: Entity }) {
                   ))}</div>
                 </div>
               ))}
-              <p className="muted small">{objDef(kind).line ? 'Click a start point, then an end point. Walls keep going from where the last piece ended; press Esc to stop.' : 'Click the land to place it. Use the select tool (E) to move, turn, resize or recolor things, and the remove tool (X) to take them away.'}</p>
+              <p className="muted small">{objDef(kind).stroke ? 'Drag across the land to draw it; it follows the ground. Select it (E) to change its width or color.' : objDef(kind).line ? 'Click a start point, then an end point. Walls and fences keep going from where the last piece ended; press Esc to stop.' : 'Click the land to place it. Everything is about real size, so zoom in close to build a village. Use the select tool (E) to move, turn, resize or recolor things, and the remove tool (X) to take them away.'}</p>
             </div>
           )}
-          <h4>Pins</h4>
+          <h4>Journeys</h4>
+          {!journeys.length && <p className="muted small">Draw where a character travels across the map, and tie each stop to a scene to see where everyone is at any point in the story.</p>}
+          {journeys.length > 0 && opts && (
+            <label className="sfield"><span className="muted small">Show where everyone is at</span>
+              <select className="input" value={storyPoint} onChange={(e) => setStoryPoint(e.target.value)}>
+                <option value="">The end of the story</option>
+                {opts.sceneOpts.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </label>
+          )}
+          <div className="col gap-s">
+            {journeys.map((j) => (
+              <button key={j.id} className={'pin-row' + (j.id === selJ ? ' on' : '')} onClick={() => { setSelJ(j.id); setTool('journey'); setSelObj(null); }}>
+                <span className="dot" style={{ background: j.color }} /><span className="grow ellipsis">{j.name}</span><span className="muted small">{j.stops.length} stop{j.stops.length === 1 ? '' : 's'}</span>
+              </button>
+            ))}
+          </div>
+          {opts && <Picker options={opts.characterOpts} buttonLabel="New journey" placeholder="Whose journey? Pick a character or type a name…"
+            onPick={(id) => { const c = opts.byId.get(id); const j: Journey = { id: uid(), name: c?.name ?? 'Journey', characterId: id, color: String(c?.fields.color ?? autoColor(c?.name ?? '')), stops: [] }; setJourneys([...journeys, j]); setSelJ(j.id); setTool('journey'); }}
+            onCreate={(n) => { const j: Journey = { id: uid(), name: n, color: PIN_COLORS[journeys.length % PIN_COLORS.length], stops: [] }; setJourneys([...journeys, j]); setSelJ(j.id); setTool('journey'); }} />}
+          {editJ && opts && (
+            <div className="pin-editor" key={editJ.id}>
+              <div className="row"><h4 className="grow">{editJ.name}</h4><button className="icon-btn sm" aria-label="Done" onClick={() => { setSelJ(null); setTool('view'); }}><X size={12} /></button></div>
+              <div className="row gap-s wrap">{[...PIN_COLORS, '#c0587e', '#7d8a52'].map((c) => <button key={c} className={'swatch' + (editJ.color === c ? ' on' : '')} style={{ background: c }} aria-label={`Color ${c}`} onClick={() => setJourneys(journeys.map((j) => (j.id === editJ.id ? { ...j, color: c } : j)))} />)}</div>
+              {tool !== 'journey' && <button className="btn sm" onClick={() => setTool('journey')}><Plus size={13} /> Add stops</button>}
+              {!editJ.stops.length && <p className="muted small">Click the map to add the first stop.</p>}
+              <ol className="jstops">
+                {editJ.stops.map((st, i) => (
+                  <li key={st.id} className="row gap-s">
+                    <span className="muted small jnum">{i + 1}</span>
+                    <select className="input sm grow" value={st.sceneId ?? ''} aria-label={`When stop ${i + 1} happens`}
+                      onChange={(e) => setJourneys(journeys.map((j) => (j.id !== editJ.id ? j : { ...j, stops: j.stops.map((x) => (x.id === st.id ? { ...x, sceneId: e.target.value || undefined } : x)) })))}>
+                      <option value="">Any time</option>
+                      {opts.sceneOpts.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                    </select>
+                    <button className="icon-btn sm" aria-label={`Remove stop ${i + 1}`} onClick={() => setJourneys(journeys.map((j) => (j.id !== editJ.id ? j : { ...j, stops: j.stops.filter((x) => x.id !== st.id) })))}><X size={12} /></button>
+                  </li>
+                ))}
+              </ol>
+              <button className="btn ghost sm danger-text" onClick={async () => { if (await confirmDialog(`Delete ${editJ.name}'s journey?`, 'Its stops are removed from the map.', { danger: true, ok: 'Delete' })) { setJourneys(journeys.filter((j) => j.id !== editJ.id)); setSelJ(null); setTool('view'); } }}><Trash2 size={13} /> Delete journey</button>
+            </div>
+          )}
+
+          <h4 className="mt">Pins</h4>
           {!pins.length && <p className="muted small">Use the pin tool (M) and click the map. Pins show in both 2D and 3D.</p>}
           <div className="col gap-s">
             {pins.map((p) => (
