@@ -125,7 +125,8 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
     onUpdate: ({ editor, transaction }) => {
       const st = textStats(editor.getText({ blockSeparator: '\n\n' }));
       setStats(st);
-      const grew = st.words - lastWords.current;
+      // only real edits count: opening a scene also fires an update (before onCreate), which used to add the whole scene again
+      const grew = transaction.docChanged ? st.words - lastWords.current : 0;
       lastWords.current = st.words;
       const fromCoWriter = !!transaction.getMeta(ySyncPluginKey)?.isChangeOrigin;
       if (grew > 0 && !transaction.getMeta('history$') && !fromCoWriter) { typedSession.current += grew; typedUnsaved.current += grew; }

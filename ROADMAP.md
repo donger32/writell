@@ -2,6 +2,12 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.17.8 — statistics count fix
+
+No database changes.
+
+- **Fixed: opening a scene added its whole text to today's words** (every time you entered a project, reloaded, or reopened the scene). Only words you actually type count now.
+
 ## Changes in v0.17.7 — sidebar in full screen
 
 No database changes.
