@@ -29,6 +29,10 @@ export interface TerrainProps {
   /** the tool draws a line by dragging (paths, roads, rivers) */
   drawLine: boolean;
   journeys: JourneyDraw[];
+  /** a thing being carried (Move from the right-click menu): it follows the mouse until a click puts it down */
+  carryId: string | null; onCarryEnd: () => void;
+  /** right-click on a placed thing */
+  onThingMenu: (id: string, x: number, y: number) => void;
   /** the part of the grid that changed since the last draw (null = everything) */
   dirtyRef: React.MutableRefObject<Rect | null>;
   onStroke: (cx: number, cy: number, first: boolean) => void; onStrokeEnd: () => void;
@@ -283,8 +287,32 @@ diffuseColor.rgb *= 1.0 + grain(vGrainPos.xz, 0.35) * 0.22 + grain(vGrainPos.xz,
       const u = pt.x / W + 0.5, v = pt.z / D + 0.5;
       return { u, v, x: u * (N - 1), y: v * (N - 1) };
     };
+    // ---- right-click on a thing opens its menu (a right-drag still orbits)
+    // (some systems send the right-click as the button goes down, others as it comes up: decide once it's up and hasn't moved)
+    let rdown: { x: number; y: number } | null = null, rightHeld = false, pendingMenu: { id: string; x: number; y: number } | null = null;
+    let carryLast: { u: number; v: number } | null = null;
+    const still = (x: number, y: number) => !rdown || Math.hypot(x - rdown.x, y - rdown.y) <= 5;
+    const thingAt = (e: MouseEvent) => {
+      const ev = e as PointerEvent;
+      let id = hitThing(ev) ?? nearOnScreen(ev);
+      if (!id) { const l = hitLand(ev); if (l) id = nearStroke(l.point); }
+      return id;
+    };
+    const ctx = (e: MouseEvent) => {
+      e.preventDefault();
+      const id = thingAt(e); if (!id) return;
+      if (rightHeld) pendingMenu = { id, x: e.clientX, y: e.clientY };
+      else if (still(e.clientX, e.clientY)) props.current.onThingMenu(id, e.clientX, e.clientY);
+    };
+    /** where a thing sits (its middle, for walls and drawn lines) */
+    const centerOf = (o: MapObject) => {
+      if (o.pts) { const ps = strokePts(o); const m = ps[Math.floor(ps.length / 2)] ?? [o.u, o.v]; return { u: m[0], v: m[1] }; }
+      return { u: o.u2 !== undefined ? (o.u + o.u2) / 2 : o.u, v: o.v2 !== undefined ? (o.v + (o.v2 ?? o.v)) / 2 : o.v };
+    };
     const down = (e: PointerEvent) => {
       const tool = props.current.tool;
+      if (e.button === 2) { rdown = { x: e.clientX, y: e.clientY }; rightHeld = true; pendingMenu = null; }
+      if (props.current.carryId) { if (e.button === 0) { carryLast = null; props.current.onCarryEnd(); } return; }
       if (e.button !== 0 || tool === 'view') return;
       if (tool === 'select') {
         let id = hitThing(e) ?? nearOnScreen(e);
@@ -303,6 +331,16 @@ diffuseColor.rgb *= 1.0 + grain(vGrainPos.xz, 0.35) * 0.22 + grain(vGrainPos.xz,
     };
     const move = (e: PointerEvent) => {
       const tool = props.current.tool;
+      const cid = props.current.carryId;
+      if (cid) {
+        const h = hitLand(e); const o = props.current.objects.find((x) => x.id === cid);
+        if (h && o) {
+          const g = toGrid(h.point); const from = carryLast ?? centerOf(o);
+          props.current.onMoveObject(cid, g.u - from.u, g.v - from.v); carryLast = { u: g.u, v: g.v };
+        }
+        ring.visible = false; render(); return;
+      }
+      carryLast = null;
       if (moving) {
         const h = hitLand(e);
         if (h) {
@@ -324,18 +362,23 @@ diffuseColor.rgb *= 1.0 + grain(vGrainPos.xz, 0.35) * 0.22 + grain(vGrainPos.xz,
       else if (drawing && h) { const g = toGrid(h.point); pending = { x: g.x, y: g.y }; if (!raf) raf = requestAnimationFrame(() => { raf = 0; if (pending) props.current.onStroke(pending.x, pending.y, false); }); }
       render();
     };
-    const up = () => {
+    const up = (e: PointerEvent) => {
+      if (e.button === 2) {
+        rightHeld = false;
+        if (pendingMenu && still(e.clientX, e.clientY)) props.current.onThingMenu(pendingMenu.id, pendingMenu.x, pendingMenu.y);
+        pendingMenu = null;
+      }
       if (moving) { moving = null; controls.enabled = true; props.current.onStrokeEnd(); }
       if (drawing) { drawing = false; props.current.onStrokeEnd(); }
     };
     const leave = () => { ring.visible = false; render(); };
     const dom = renderer.domElement;
-    dom.addEventListener('pointerdown', down); dom.addEventListener('pointermove', move); dom.addEventListener('pointerup', up); dom.addEventListener('pointerleave', leave);
+    dom.addEventListener('pointerdown', down); dom.addEventListener('pointermove', move); dom.addEventListener('pointerup', up); dom.addEventListener('pointerleave', leave); dom.addEventListener('contextmenu', ctx);
 
     return () => {
       ro.disconnect(); controls.dispose(); cancelAnimationFrame(rq); cancelAnimationFrame(walkRaf); clearTimeout(S.current?.miniT);
       window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('blur', blur);
-      dom.removeEventListener('pointerdown', down); dom.removeEventListener('pointermove', move); dom.removeEventListener('pointerup', up); dom.removeEventListener('pointerleave', leave);
+      dom.removeEventListener('pointerdown', down); dom.removeEventListener('pointermove', move); dom.removeEventListener('pointerup', up); dom.removeEventListener('pointerleave', leave); dom.removeEventListener('contextmenu', ctx);
       scene.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; if (Array.isArray(mat)) mat.forEach((x) => x.dispose()); else mat?.dispose?.(); });
       S.current?.tex?.dispose();
       renderer.dispose(); el.innerHTML = '';
@@ -653,9 +696,9 @@ diffuseColor.rgb *= 1.0 + grain(vGrainPos.xz, 0.35) * 0.22 + grain(vGrainPos.xz,
   useEffect(() => {
     const c = S.current!.controls;
     c.mouseButtons = { LEFT: p.tool === 'view' ? THREE.MOUSE.ROTATE : (-1 as unknown as THREE.MOUSE), MIDDLE: THREE.MOUSE.DOLLY, RIGHT: p.tool === 'view' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE };
-    S.current!.renderer.domElement.style.cursor = p.tool === 'view' ? 'grab' : p.tool === 'pin' || p.tool === 'object' || p.tool === 'journey' ? 'crosshair' : p.tool === 'select' ? 'pointer' : 'none';
+    S.current!.renderer.domElement.style.cursor = p.carryId ? 'move' : p.tool === 'view' ? 'grab' : p.tool === 'pin' || p.tool === 'object' || p.tool === 'journey' ? 'crosshair' : p.tool === 'select' ? 'pointer' : 'none';
     S.current!.ring.visible = false; S.current!.render();
-  }, [p.tool]);
+  }, [p.tool, p.carryId]);
 
   return <div className="terrain3d" ref={host} />;
 }

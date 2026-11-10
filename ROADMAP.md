@@ -2,6 +2,13 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.18.1 — small brushes, right-click on things
+
+No database changes.
+
+- **Brushes go much smaller** (down to about 8 m across, shown in meters next to the slider), so the remove tool can pick off one house. The slider is finer at the small end; [ and ] change the size step by step. Land tools still work at least one map cell wide.
+- **Right-click a placed thing** (in 3D or 2D) for a menu: **Move** (it follows the mouse; click to put it down, Esc to cancel), **Size, color & turn…**, **Copy** and **Remove**. A right-drag still turns the view. The selected-thing panel has a Move button too.
+
 ## Changes in v0.18.0 — real-size maps, roads & rivers, journeys, glossary, ebooks
 
 No database changes.

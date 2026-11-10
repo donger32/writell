@@ -12,6 +12,7 @@ export interface Map2DProps {
   onPlaceObject: (u: number, v: number) => void; onSelectObject: (id: string | null) => void; onMoveObject: (id: string, du: number, dv: number) => void;
   snapshotRef?: React.MutableRefObject<(() => string) | null>;
   drawLine: boolean; journeys: JourneyDraw[]; heightScale?: number;
+  carryId: string | null; onCarryEnd: () => void; onThingMenu: (id: string, x: number, y: number) => void;
 }
 
 /** Top-down view of the same map: hill-shaded terrain colours, or the uploaded picture */
@@ -71,6 +72,34 @@ export function Map2D(p: Map2DProps) {
     return { u: (e.clientX - r.left) / r.width, v: (e.clientY - r.top) / r.height };
   };
 
+  /** the placed thing nearest a point on the board, within a few pixels */
+  const pickAt = (u: number, v: number) => {
+    const r = board.current!.getBoundingClientRect();
+    let best: string | null = null, bd = 14;
+    for (const o of p.objects) {
+      if (o.pts) {
+        const ps = strokePts(o);
+        for (let i = 0; i + 1 < ps.length; i++) {
+          const ax = ps[i][0] * r.width, ay = ps[i][1] * r.height, bx = ps[i + 1][0] * r.width, by = ps[i + 1][1] * r.height, dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+          const t = L ? Math.max(0, Math.min(1, ((u * r.width - ax) * dx + (v * r.height - ay) * dy) / L)) : 0;
+          const d = Math.hypot(ax + t * dx - u * r.width, ay + t * dy - v * r.height);
+          if (d < bd) { bd = d; best = o.id; }
+        }
+        continue;
+      }
+      const cu = o.u2 !== undefined ? (o.u + o.u2) / 2 : o.u, cv = o.v2 !== undefined ? (o.v + (o.v2 ?? o.v)) / 2 : o.v;
+      const d = Math.hypot((cu - u) * r.width, (cv - v) * r.height);
+      if (d < bd) { bd = d; best = o.id; }
+    }
+    return best;
+  };
+  const rdown = useRef<{ x: number; y: number } | null>(null);
+  const rightHeld = useRef(false);
+  const pendingMenu = useRef<{ id: string; x: number; y: number } | null>(null);
+  const still = (x: number, y: number) => !rdown.current || Math.hypot(x - rdown.current.x, y - rdown.current.y) <= 5;
+  const carryLast = useRef<{ u: number; v: number } | null>(null);
+  useEffect(() => { carryLast.current = null; }, [p.carryId]);
+
   const onWheel = (e: React.WheelEvent) => {
     const r = wrap.current!.getBoundingClientRect();
     const z = uiZoom(); const mx = (e.clientX - r.left) / z, my = (e.clientY - r.top) / z;
@@ -80,8 +109,16 @@ export function Map2D(p: Map2DProps) {
 
   return (
     <div className="map2d" ref={wrap} onWheel={onWheel}
-      onContextMenu={(e) => e.preventDefault()}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        const { u, v } = local(e); const id = u >= 0 && v >= 0 && u <= 1 && v <= 1 ? pickAt(u, v) : null;
+        if (!id) return;
+        if (rightHeld.current) pendingMenu.current = { id, x: e.clientX, y: e.clientY };
+        else if (still(e.clientX, e.clientY)) p.onThingMenu(id, e.clientX, e.clientY);
+      }}
       onPointerDown={(e) => {
+        if (e.button === 2) { rdown.current = { x: e.clientX, y: e.clientY }; rightHeld.current = true; pendingMenu.current = null; }
+        if (p.carryId) { if (e.button === 0) { carryLast.current = null; p.onCarryEnd(); } return; }
         (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
         const pinEl = (e.target as HTMLElement).closest('[data-pin]') as HTMLElement | null;
         if (pinEl && e.button === 0) { p.onSelectPin(pinEl.dataset.pin!); drag.current = { mode: 'pin', x: e.clientX, y: e.clientY, vx: 0, vy: 0, pin: pinEl.dataset.pin }; return; }
@@ -91,25 +128,7 @@ export function Map2D(p: Map2DProps) {
         if (p.tool === 'pin') { p.onPlacePin(u, v); return; }
         if ((p.tool === 'object' && !p.drawLine) || p.tool === 'journey') { p.onPlaceObject(u, v); return; }
         if (p.tool === 'select') {
-          // the nearest thing within a few pixels
-          const r = board.current!.getBoundingClientRect();
-          let best: string | null = null, bd = 14;
-          for (const o of p.objects) {
-            if (o.pts) {
-              // drawn lines: the nearest point along them
-              const ps = strokePts(o);
-              for (let i = 0; i + 1 < ps.length; i++) {
-                const ax = ps[i][0] * r.width, ay = ps[i][1] * r.height, bx = ps[i + 1][0] * r.width, by = ps[i + 1][1] * r.height, dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
-                const t = L ? Math.max(0, Math.min(1, ((u * r.width - ax) * dx + (v * r.height - ay) * dy) / L)) : 0;
-                const d = Math.hypot(ax + t * dx - u * r.width, ay + t * dy - v * r.height);
-                if (d < bd) { bd = d; best = o.id; }
-              }
-              continue;
-            }
-            const cu = o.u2 !== undefined ? (o.u + o.u2) / 2 : o.u, cv = o.v2 !== undefined ? (o.v + (o.v2 ?? o.v)) / 2 : o.v;
-            const d = Math.hypot((cu - u) * r.width, (cv - v) * r.height);
-            if (d < bd) { bd = d; best = o.id; }
-          }
+          const best = pickAt(u, v);
           p.onSelectObject(best);
           if (best) drag.current = { mode: 'obj', x: e.clientX, y: e.clientY, vx: 0, vy: 0, pin: best, u, v };
           return;
@@ -120,6 +139,14 @@ export function Map2D(p: Map2DProps) {
       onPointerMove={(e) => {
         const d = drag.current;
         const { u, v } = local(e);
+        if (p.carryId) {
+          const o = p.objects.find((x) => x.id === p.carryId);
+          if (o) {
+            const from = carryLast.current ?? (o.pts ? (() => { const ps = strokePts(o); const m = ps[Math.floor(ps.length / 2)] ?? [o.u, o.v]; return { u: m[0], v: m[1] }; })() : { u: o.u2 !== undefined ? (o.u + o.u2) / 2 : o.u, v: o.v2 !== undefined ? (o.v + (o.v2 ?? o.v)) / 2 : o.v });
+            p.onMoveObject(o.id, u - from.u, v - from.v); carryLast.current = { u, v };
+          }
+          return;
+        }
         setCursor(p.tool !== 'view' && p.tool !== 'pin' && p.tool !== 'object' && p.tool !== 'select' && p.tool !== 'journey' && u >= 0 && v >= 0 && u <= 1 && v <= 1 ? { x: u, y: v } : null);
         if (!d) return;
         if (d.mode === 'pan') { const z = uiZoom(); setView((s) => ({ ...s, x: d.vx + (e.clientX - d.x) / z, y: d.vy + (e.clientY - d.y) / z })); }
@@ -127,9 +154,14 @@ export function Map2D(p: Map2DProps) {
         else if (d.mode === 'obj' && d.pin && d.u !== undefined && d.v !== undefined) { p.onMoveObject(d.pin, u - d.u, v - d.v); d.u = u; d.v = v; }
         else if (d.mode === 'pin' && d.pin && (Math.abs(e.clientX - d.x) > 3 || Math.abs(e.clientY - d.y) > 3)) p.onMovePin(d.pin, Math.max(0, Math.min(1, u)), Math.max(0, Math.min(1, v)));
       }}
-      onPointerUp={() => { if (drag.current?.mode === 'draw' || drag.current?.mode === 'obj') p.onStrokeEnd(); drag.current = null; }}
+      onPointerUp={(e) => {
+        if (e.button === 2) {
+          rightHeld.current = false;
+          const m = pendingMenu.current; pendingMenu.current = null;
+          if (m && still(e.clientX, e.clientY)) p.onThingMenu(m.id, m.x, m.y);
+        } if (drag.current?.mode === 'draw' || drag.current?.mode === 'obj') p.onStrokeEnd(); drag.current = null; }}
       onPointerLeave={() => setCursor(null)}
-      style={{ cursor: p.tool === 'view' ? 'grab' : p.tool === 'pin' || p.tool === 'object' || p.tool === 'journey' ? 'crosshair' : p.tool === 'select' ? 'pointer' : 'none' }}>
+      style={{ cursor: p.carryId ? 'move' : p.tool === 'view' ? 'grab' : p.tool === 'pin' || p.tool === 'object' || p.tool === 'journey' ? 'crosshair' : p.tool === 'select' ? 'pointer' : 'none' }}>
       <div className="map2d-stage" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
         <div className="map2d-board" ref={board} style={{ aspectRatio: String(p.aspect), ['--a' as string]: String(p.aspect) }}>
           <canvas ref={canvas} width={RES} height={H} />
