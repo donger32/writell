@@ -658,7 +658,7 @@ const MARKERS: { id: Scene['timeMarker']; label: string }[] = [{ id: '', label: 
 function StoryTimeline({ projectId, data, opts, setSel }: { projectId: string; data: NonNullable<ReturnType<typeof useTimelineData>>; opts: Opts; setSel: (id: string) => void }) {
   const chapters = opts.chapters;
   const order = new Map(chapters.map((c, i) => [c.id, i]));
-  const scenes = [...opts.scenes].sort((a, b) => (order.get(a.chapterId)! - order.get(b.chapterId)!) || a.order - b.order);
+  const scenes = [...opts.scenes].sort((a, b) => ((order.get(a.chapterId) ?? 1e9) - (order.get(b.chapterId) ?? 1e9)) || a.order - b.order);
   const calFor = (ev: Entity) => calendarOf(data.timelines.find((t) => t.id === ev.fields.timelineId));
   const eventsOf = (sid: string) => data.links.filter((l) => l.relation === 'shown-in' && l.toId === sid).map((l) => ({ l, e: data.events.find((e) => e.id === l.fromId) })).filter((x) => x.e) as { l: Link; e: Entity }[];
   const points = scenes.map((s, i) => {

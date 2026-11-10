@@ -203,7 +203,7 @@ export function SettingsModal() {
             {!isTauri() && <p className="muted">Clearing this browser's data for this site deletes the copy stored here. Keep backup files, or use an account so your writing is also synced.</p>}
             <h3>Reset</h3>
             <button className="btn ghost sm" onClick={async () => { if (await confirmDialog('Reset all appearance and editor settings?', 'Your projects are not affected.', { ok: 'Reset' })) { resetSettings(); toast('Settings reset'); } }}>Reset settings to defaults</button>
-            <p className="muted small">Writell 0.17.12</p>
+            <p className="muted small">Writell 0.17.13</p>
           </>}
         </div>
       </div>

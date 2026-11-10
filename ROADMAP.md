@@ -2,6 +2,12 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.17.13 — map page crash fix
+
+No database changes.
+
+- **Fixed: the Map page (and anything listing scenes) could crash** with "Cannot read properties of undefined (reading 'i')" when a scene's chapter was missing, for example after a chapter was deleted on another device. Those scenes now show in the sidebar under **Scenes without a chapter**, so no writing is hidden; drag them onto a chapter to put them back. Timeline and search also sort such scenes safely.
+
 ## Changes in v0.17.12 — full screen: hide until you point
 
 No database changes.

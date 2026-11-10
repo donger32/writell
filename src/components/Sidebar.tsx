@@ -301,7 +301,7 @@ function Manuscript({ projectId }: { projectId: string }) {
   };
   const dropOnScene = async (target: Scene, e: React.DragEvent) => {
     e.preventDefault(); e.stopPropagation(); setOver(null);
-    if (drag?.type !== 'scene' || drag.id === target.id) return setDrag(null);
+    if (drag?.type !== 'scene' || drag.id === target.id || !chapters.some((c) => c.id === target.chapterId)) return setDrag(null);
     const list = byChapter(target.chapterId).filter((s) => s.id !== drag.id);
     const idx = list.findIndex((s) => s.id === target.id);
     await moveScene(drag.id, target.chapterId, idx);
@@ -337,6 +337,23 @@ function Manuscript({ projectId }: { projectId: string }) {
     } },
   ]);
 
+  const sceneRow = (s: Scene) => (
+              <div key={s.id} className={'tree-row sc' + (activeScene === s.id ? ' active' : '') + (over === s.id ? ' drop' : '')} draggable
+                onDragStart={(e) => { e.stopPropagation(); setDrag({ type: 'scene', id: s.id }); }} onDragEnd={() => { setDrag(null); setOver(null); }}
+                onDragOver={(e) => { if (drag?.type === 'scene') { e.preventDefault(); e.stopPropagation(); setOver(s.id); } }}
+                onDrop={(e) => dropOnScene(s, e)}
+                role="treeitem" tabIndex={0} aria-current={activeScene === s.id ? 'page' : undefined}
+                onKeyDown={rowKeys(() => go({ view: 'write', projectId, sceneId: s.id }), (el) => { const r = el.getBoundingClientRect(); sceneMenu({ clientX: r.left + 24, clientY: r.bottom, preventDefault() {}, stopPropagation() {} } as unknown as React.MouseEvent, s); })}
+                onClick={() => go({ view: 'write', projectId, sceneId: s.id })} onContextMenu={(e) => sceneMenu(e, s)}>
+                <FileText size={13} />
+                <span className="grow ellipsis">{s.title}</span>
+                <span className="status-dot" title={s.status} style={{ background: STATUS_COLOR[s.status] }} />
+              </div>
+            );
+  // scenes whose chapter is gone (e.g. deleted on another device): shown so no writing is hidden; drag them into a chapter
+  const chapterIds = new Set(chapters.map((c) => c.id));
+  const orphans = scenes.filter((x) => !chapterIds.has(x.chapterId)).sort((a, b) => a.order - b.order);
+
   return (
     <div className="tree" role="tree" aria-label="Manuscript">
       <div className="tree-head">
@@ -359,23 +376,20 @@ function Manuscript({ projectId }: { projectId: string }) {
               <span className="grow ellipsis">{ch.title}</span>
               <span className="count">{words ? fmtNum(words) : ''}</span>
             </div>
-            {o && sc.map((s) => (
-              <div key={s.id} className={'tree-row sc' + (activeScene === s.id ? ' active' : '') + (over === s.id ? ' drop' : '')} draggable
-                onDragStart={(e) => { e.stopPropagation(); setDrag({ type: 'scene', id: s.id }); }} onDragEnd={() => { setDrag(null); setOver(null); }}
-                onDragOver={(e) => { if (drag?.type === 'scene') { e.preventDefault(); e.stopPropagation(); setOver(s.id); } }}
-                onDrop={(e) => dropOnScene(s, e)}
-                role="treeitem" tabIndex={0} aria-current={activeScene === s.id ? 'page' : undefined}
-                onKeyDown={rowKeys(() => go({ view: 'write', projectId, sceneId: s.id }), (el) => { const r = el.getBoundingClientRect(); sceneMenu({ clientX: r.left + 24, clientY: r.bottom, preventDefault() {}, stopPropagation() {} } as unknown as React.MouseEvent, s); })}
-                onClick={() => go({ view: 'write', projectId, sceneId: s.id })} onContextMenu={(e) => sceneMenu(e, s)}>
-                <FileText size={13} />
-                <span className="grow ellipsis">{s.title}</span>
-                <span className="status-dot" title={s.status} style={{ background: STATUS_COLOR[s.status] }} />
-              </div>
-            ))}
+            {o && sc.map(sceneRow)}
             {o && <button className="tree-add" onClick={async () => { const id = await createScene(ch.id); go({ view: 'write', projectId, sceneId: id }); }}><Plus size={12} /> Scene</button>}
           </div>
         );
       })}
+      {orphans.length > 0 && (
+        <div className="tree-ch">
+          <div className="tree-row ch" title="These scenes' chapter is missing. Drag them onto a chapter to put them back.">
+            <span className="grow ellipsis muted">Scenes without a chapter</span>
+            <span className="count">{orphans.length}</span>
+          </div>
+          {orphans.map(sceneRow)}
+        </div>
+      )}
       {colorFor && <ColorDialog title={`Color for “${colorFor.title}”`} value={colorFor.color ?? ''} onClose={() => setColorFor(null)} onPick={(c) => { void db.chapters.update(colorFor.id, { color: c, updatedAt: Date.now() }); }} />}
     </div>
   );

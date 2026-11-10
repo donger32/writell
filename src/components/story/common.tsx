@@ -190,8 +190,8 @@ export function useProjectOptions(projectId: string) {
     ]);
     const chMap = new Map(chapters.map((c, i) => [c.id, { c, i }]));
     const sceneOpts: PickOption[] = scenes
-      .sort((a, b) => (chMap.get(a.chapterId)!.i - chMap.get(b.chapterId)!.i) || a.order - b.order)
-      .map((s) => ({ id: s.id, label: `${chMap.get(s.chapterId)?.c.title} · ${s.title}`, group: 'Scenes' }));
+      .sort((a, b) => ((chMap.get(a.chapterId)?.i ?? 1e9) - (chMap.get(b.chapterId)?.i ?? 1e9)) || a.order - b.order) // a scene can outlive its chapter (sync, old deletes)
+      .map((s) => ({ id: s.id, label: `${chMap.get(s.chapterId)?.c.title ?? 'No chapter'} · ${s.title}`, group: 'Scenes' }));
     const ent = (kind: string) => entities.filter((e) => e.kind === kind).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
     return {
       entities,

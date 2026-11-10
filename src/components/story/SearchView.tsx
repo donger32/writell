@@ -55,7 +55,7 @@ export function SearchView({ projectId, q: initialQ }: { projectId: string; q?: 
       const { count, first } = find(parts.filter((p) => readable(p.text)), needle);
       if (count && first) res.push({ cat, title, sub, snippet: first.snip, where: first.where, count, open });
     };
-    for (const { s, text } of [...data.scenes].sort((a, b) => (order.get(a.s.chapterId)! - order.get(b.s.chapterId)!) || a.s.order - b.s.order)) {
+    for (const { s, text } of [...data.scenes].sort((a, b) => ((order.get(a.s.chapterId) ?? 1e9) - (order.get(b.s.chapterId) ?? 1e9)) || a.s.order - b.s.order)) {
       add('scenes', s.title || 'Untitled scene', chMap.get(s.chapterId)?.title, [{ where: 'Title', text: s.title }, { where: 'Summary', text: s.summary }, { where: 'Notes', text: s.notes }, { text }], () => go({ view: 'write', projectId, sceneId: s.id }));
     }
     for (const c of data.chapters) add('chapters', c.title, undefined, [{ where: 'Title', text: c.title }, { where: 'Summary', text: c.summary }, { where: 'Notes', text: c.notes }], () => go({ view: 'project', projectId }));
