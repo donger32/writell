@@ -2,6 +2,12 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.17.7 — sidebar in full screen
+
+No database changes.
+
+- **Full screen keeps the sidebar and tabs**, so you can move around your project without leaving it (the toolbar still fades until you point at it). Collapse the sidebar with its usual button for a cleaner page; reading mode still hides everything.
+
 ## Changes in v0.17.6 — top buttons stay in your project
 
 No database changes.

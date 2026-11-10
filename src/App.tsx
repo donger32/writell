@@ -176,10 +176,12 @@ export default function App() {
     return () => { window.removeEventListener('keydown', k); document.removeEventListener('fullscreenchange', fs); };
   }, []);
 
-  const hideChrome = (nav.fullscreen || nav.reading) && route.view === 'write';
+  // reading mode hides everything; full screen keeps the sidebar and tabs (collapse the sidebar for a cleaner page)
+  const hideChrome = nav.reading && route.view === 'write';
+  const fadeChrome = (nav.fullscreen || nav.reading) && route.view === 'write';
 
   return (
-    <div className={'app' + (hideChrome ? ' chrome-hidden' : '') + (sbOpen ? ' sb-open' : '')}>
+    <div className={'app' + (fadeChrome ? ' chrome-hidden' : '') + (sbOpen ? ' sb-open' : '')}>
       {!hideChrome && <Sidebar />}
       {sbOpen && <div className="sb-backdrop" onClick={() => setSbOpen(false)} aria-hidden="true" />}
       <a href="#main-content" className="skip-link" onClick={(e) => { e.preventDefault(); (document.querySelector('.prose, #main-content') as HTMLElement | null)?.focus(); }}>Skip to content</a>
