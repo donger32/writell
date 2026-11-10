@@ -2,6 +2,12 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.17.9 — owner's statistics cleanup
+
+No database changes.
+
+- One-off cleanup for the owner account only: word counts inflated by the bug fixed in 0.17.8 are scaled down so no project's log says more was written than it holds (days keep at least 1 word, so streaks survive). Runs once per device; nobody else is affected.
+
 ## Changes in v0.17.8 — statistics count fix
 
 No database changes.

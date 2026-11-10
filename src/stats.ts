@@ -78,3 +78,26 @@ export async function stopSprint(): Promise<SprintLog | null> {
   return log;
 }
 export function getSprintLog(): SprintLog[] { try { return JSON.parse(localStorage.getItem('inkwell.sprints') || '[]'); } catch { return []; } }
+
+/**
+ * One-off cleanup (owner's account only) for a bug fixed in 0.17.8, where opening a scene added its whole text to the day's words.
+ * A project's log can't honestly say more words were written than the project holds, so any log that does
+ * is scaled down to fit. Days you wrote on keep at least 1 word, so streaks survive.
+ */
+export async function repairInflatedActivity() {
+  const FLAG = 'writell.statsRepair.v1';
+  try { if (localStorage.getItem(FLAG)) return; } catch { return; }
+  const rows = await db.activity.toArray();
+  const byProject = new Map<string, DayActivity[]>();
+  for (const r of rows) byProject.set(r.projectId, [...(byProject.get(r.projectId) ?? []), r]);
+  const fixed: DayActivity[] = [];
+  for (const [pid, list] of byProject) {
+    const logged = list.reduce((a, r) => a + r.wordsAdded, 0);
+    const words = await projectWords(pid);
+    if (logged <= words) continue;
+    const k = words / logged, t = Date.now();
+    for (const r of list) if (r.wordsAdded > 0) fixed.push({ ...r, wordsAdded: Math.max(1, Math.round(r.wordsAdded * k)), updatedAt: t });
+  }
+  if (fixed.length) await db.activity.bulkPut(fixed);
+  try { localStorage.setItem(FLAG, String(Date.now())); } catch { /* */ }
+}

@@ -22,6 +22,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { DialogHost, MenuHost, Modal, ToastHost } from './components/ui';
 import { applySettingsToDOM, useSettings } from './settings';
 import { go, setNav, useNav, getNav } from './nav';
+import { useSocial } from './social/api';
 import { db } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { TabBar } from './components/TabBar';
@@ -56,6 +57,13 @@ export default function App() {
   // shared projects: invite links, view-only banner, arrivals/removals
   const sync = useSyncStatus();
   const roles = useSharedRoles();
+  // one-off: shrink the owner's word counts that the old "opening a scene counts as writing" bug inflated (after sync has had a moment)
+  const myName = useSocial().me?.username;
+  useEffect(() => {
+    if (myName !== 'owner') return;
+    const t = window.setTimeout(() => { import('./stats').then((m) => m.repairInflatedActivity()).catch(() => {}); }, 8000);
+    return () => clearTimeout(t);
+  }, [myName]);
   useEffect(() => {
     const check = () => { const link = takeInviteFromAddress(); if (link && getNav().joinLink === null) setNav({ joinLink: link }); };
     check(); window.addEventListener('hashchange', check);
