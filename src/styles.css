@@ -194,6 +194,14 @@ p { margin: 6px 0; }
 .exit-reading:hover { opacity: 1; }
 .chrome-hidden .pane-head, .chrome-hidden .toolbar { opacity: 0; transition: opacity .3s; }
 .chrome-hidden .pane-head:hover, .chrome-hidden .toolbar:hover, .chrome-hidden .pane-head:focus-within { opacity: 1; }
+/* full screen: the word count bar shows when you point at it, and the sidebar slides in from the left edge */
+.chrome-hidden .statusbar { opacity: 0; transition: opacity .3s; }
+.chrome-hidden .statusbar:hover, .chrome-hidden .statusbar:focus-within { opacity: 1; }
+.sb-hotzone { position: fixed; left: 0; top: 0; bottom: 0; width: 14px; z-index: 49; }
+.fs-mode .sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 50; transform: translateX(-100%); opacity: 0; box-shadow: var(--shadow);
+  transition: transform .2s ease, opacity .2s ease; transition-delay: .25s; }
+.fs-mode .sb-hotzone:hover + .sidebar, .fs-mode .sidebar:hover, .fs-mode .sidebar:focus-within { transform: none; opacity: 1; transition-delay: 0s; }
+@media (prefers-reduced-motion: reduce) { .fs-mode .sidebar { transition: opacity .1s; } }
 
 .findbar { display: flex; flex-direction: column; gap: 6px; padding: 6px 12px; background: var(--panel); border-bottom: 1px solid var(--border); }
 .findbar .input.sm { width: 220px; }

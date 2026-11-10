@@ -189,7 +189,9 @@ export default function App() {
   const fadeChrome = (nav.fullscreen || nav.reading) && route.view === 'write';
 
   return (
-    <div className={'app' + (fadeChrome ? ' chrome-hidden' : '') + (sbOpen ? ' sb-open' : '')}>
+    <div className={'app' + (fadeChrome ? ' chrome-hidden' : '') + (fadeChrome && !hideChrome ? ' fs-mode' : '') + (sbOpen ? ' sb-open' : '')}>
+      {/* full screen: the sidebar hides off to the left and slides in when you point at the left edge */}
+      {fadeChrome && !hideChrome && <div className="sb-hotzone" aria-hidden="true" />}
       {!hideChrome && <Sidebar />}
       {sbOpen && <div className="sb-backdrop" onClick={() => setSbOpen(false)} aria-hidden="true" />}
       <a href="#main-content" className="skip-link" onClick={(e) => { e.preventDefault(); (document.querySelector('.prose, #main-content') as HTMLElement | null)?.focus(); }}>Skip to content</a>

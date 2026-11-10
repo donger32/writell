@@ -2,6 +2,12 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.17.12 — full screen: hide until you point
+
+No database changes.
+
+- **Full screen** now hides the sidebar and the word count bar too, like the toolbar: point at the left edge and the sidebar slides in over the page (it slides away when you leave it); point at the bottom bar to see the word count. The writing gets the whole width.
+
 ## Changes in v0.17.11 — readable page for web filters
 
 No database changes.
