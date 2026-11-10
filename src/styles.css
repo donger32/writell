@@ -1310,3 +1310,12 @@ body.fx-shake .app { animation: fx-shake .75s cubic-bezier(.36, .07, .19, .97); 
   .map-hint { display: none; }
   .map-mini { transform: scale(.68); transform-origin: top right; right: 8px; top: 8px; }
 }
+
+/* statistics, friends, trash and admin open over the current page */
+.main-panel { position: absolute; inset: 0; z-index: 30; background: var(--bg); display: flex; flex-direction: column; animation: panel-in .14s ease-out; }
+.main-panel-bar { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+.main-panel-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.main-panel-body > * { flex: 1 0 auto; }
+@keyframes panel-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .main-panel { animation: none; } }
+@media (max-width: 700px), (max-height: 500px) and (pointer: coarse) { .main-panel-bar .small { display: none; } .main-panel-bar { padding-top: max(8px, env(safe-area-inset-top)); } }

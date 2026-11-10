@@ -1,6 +1,6 @@
 /* Friends & people: your profile, friends, requests, finding people, blocked */
 import { useEffect, useRef, useState } from 'react';
-import { Ban, Check, Search, UserMinus, UserPlus, Users, X, Pencil, Cloud } from 'lucide-react';
+import { Ban, Check, Search, UserMinus, UserPlus, Contact, X, Pencil, Cloud } from 'lucide-react';
 import {
   accept, block, friendsSince, getProfile, isBanned, isOnline, nameProblem, refreshSocial, relationTo, saveProfile, searchPeople, sendRequest, setShowOnline,
   unblock, unfriend, usernameTaken, useSocial, USERNAME_RE, type Profile,
@@ -32,7 +32,7 @@ export function FriendsView() {
     return (
       <div className="page friends-page">
         <div className="empty-card">
-          <Users size={28} className="accent" />
+          <Contact size={28} className="accent" />
           <h3>Friends</h3>
           <p className="muted">Add friends to share projects and write together. First, sign in or create an account. It also keeps your projects synced between your devices.</p>
           <button className="btn primary" onClick={() => setNav({ settingsOpen: true, settingsTab: 'account' })}><Cloud size={14} /> Sign in or create an account</button>

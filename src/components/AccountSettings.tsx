@@ -1,6 +1,6 @@
 /* Settings → Account & sync */
 import { useState } from 'react';
-import { Cloud, CloudOff, Copy, KeyRound, LogOut, RefreshCw, ShieldCheck, Pause, Play, Users } from 'lucide-react';
+import { Cloud, CloudOff, Copy, KeyRound, LogOut, RefreshCw, ShieldCheck, Pause, Play, Contact } from 'lucide-react';
 import { go, setNav } from '../nav';
 import { applyRecoveryKey, changePassword, sendPasswordReset, setPaused, signIn, signOut, signUp, syncNow, useSyncStatus, type Phase } from '../sync/engine';
 import { confirmDialog, toast } from './ui';
@@ -149,7 +149,7 @@ function SignedIn() {
         </div>
         {bad && null}
       </div>
-      <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => { setNav({ settingsOpen: false }); go({ view: 'friends' }); }}><Users size={13} /> Your profile &amp; friends</button>
+      <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => { setNav({ settingsOpen: false }); go({ view: 'friends' }); }}><Contact size={13} /> Your profile &amp; friends</button>
       <p className="muted small">Projects, chapters, scenes, characters, worldbuilding, notes, maps, trees, timelines, pictures and your word-count history sync. Each scene's revision history, in-app backups and the trash stay on each device.</p>
 
       <div className="col gap-s">

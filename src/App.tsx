@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Menu, Search } from 'lucide-react';
+import { Menu, Search, ArrowLeft } from 'lucide-react';
 import { UpdateBanner } from './components/UpdateBanner';
 import { FriendsView } from './components/FriendsView';
 import { ChatView } from './components/ChatPanel';
@@ -152,6 +152,7 @@ export default function App() {
       if (matches(e, 'sidebar')) { e.preventDefault(); import('./settings').then(({ setSettings, getSettings }) => setSettings({ sidebarCollapsed: !getSettings().sidebarCollapsed })); }
       if (matches(e, 'fullscreen')) { e.preventDefault(); import('./components/EditorPane').then((m) => m.toggleFullscreen()); }
       if (e.key === 'Escape' && n.reading) setNav({ reading: false });
+      if (e.key === 'Escape' && n.panel && !n.settingsOpen && !n.paletteOpen && !document.querySelector('.modal-backdrop, .ctxmenu')) setNav({ panel: null });
       if (matches(e, 'editingMode')) { e.preventDefault(); setNav({ editing: !n.editing }); }
       if (matches(e, 'trackChanges')) { e.preventDefault(); setNav({ tracking: !n.tracking }); }
       if (matches(e, 'quickNote')) { e.preventDefault(); setNav({ quickNote: true }); }
@@ -211,6 +212,23 @@ export default function App() {
         {route.view === 'maps' && <MapsView projectId={route.projectId} entityId={route.entityId} />}
         {route.view === 'relationships' && <RelationshipMapView projectId={route.projectId} />}
         {route.view === 'timelines' && <TimelinesView projectId={route.projectId} tab={route.tab} timelineId={route.timelineId} characterId={route.characterId} eventId={route.eventId} />}
+        {nav.panel && (
+          // statistics, friends, trash and admin open over the page you were on; Back (or Esc) returns to it
+          <div className="main-panel" role="dialog" aria-label={PHONE_TITLES[nav.panel.view]}>
+            <div className="main-panel-bar">
+              <button className="btn ghost sm" onClick={() => setNav({ panel: null })}><ArrowLeft size={14} /> Back</button>
+              <span className="muted small">Esc</span>
+            </div>
+            <div className="main-panel-body">
+              <ErrorBoundary resetKey={nav.panel.view}>
+                {nav.panel.view === 'statistics' && <StatsView scope={nav.panel.scope} />}
+                {nav.panel.view === 'trash' && <TrashView />}
+                {nav.panel.view === 'friends' && <FriendsView />}
+                {nav.panel.view === 'admin' && <AdminView />}
+              </ErrorBoundary>
+            </div>
+          </div>
+        )}
         {route.view === 'write' && (
           <div className="writing">
           {!hideChrome && <TabBar projectId={route.projectId} />}

@@ -2,6 +2,13 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.17.6 — top buttons stay in your project
+
+No database changes.
+
+- **Statistics, Friends, Trash and Admin open over the page you're on** when you're in a project, instead of replacing it. Back, Esc or the same button again closes them and you're exactly where you were (same scene, same spot). Home and All projects still go to the menu. The command palette's Friends and Trash work the same way inside a project.
+- **Friends has its own icon** (a contact card) so it no longer matches Character; the palette's Tree, Relation and Trash entries got their proper icons too.
+
 ## Changes in v0.17.5 — maps on phones
 
 No database changes.

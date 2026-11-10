@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { BookOpen, FileText, Plus, Settings, Home, Crosshair, AlignVerticalJustifyCenter, Maximize2, Download, Search, Users, Globe, StickyNote } from 'lucide-react';
+import { BookOpen, FileText, Plus, Settings, Home, Crosshair, AlignVerticalJustifyCenter, Maximize2, Download, Search, Users, Contact, Trash2, Network, HeartHandshake, Globe, StickyNote } from 'lucide-react';
 import { createEntity } from '../entities';
 import { promptDialog } from './ui';
 import { openEntity } from './story/links';
@@ -49,7 +49,7 @@ export function CommandPalette() {
       { id: 'home', group: 'Go to', label: 'Home', icon: <Home size={14} />, run: () => go({ view: 'home' }) },
       { id: 'new-project', group: 'Actions', label: 'New project', icon: <Plus size={14} />, run: () => { close(); newProjectFlow(); } },
       { id: 'join', group: 'Actions', label: 'Join a shared project…', also: 'invite link share', icon: <Users size={14} />, run: () => setNav({ joinLink: '' }) },
-      { id: 'friends', group: 'Go to', label: 'Friends', also: 'people profile username', icon: <Users size={14} />, run: () => go({ view: 'friends' }) },
+      { id: 'friends', group: 'Go to', label: 'Friends', also: 'people profile username', icon: <Contact size={14} />, run: () => (projectId ? setNav({ panel: { view: 'friends' } }) : go({ view: 'friends' })) },
       { id: 'settings', group: 'Go to', label: 'Settings', icon: <Settings size={14} />, run: () => setNav({ settingsOpen: true }) },
       { id: 'focus', group: 'Actions', label: 'Toggle focus mode', icon: <Crosshair size={14} />, run: () => setSettings({ focusMode: !getSettings().focusMode }) },
       { id: 'typewriter', group: 'Actions', label: 'Toggle typewriter mode', icon: <AlignVerticalJustifyCenter size={14} />, run: () => setSettings({ typewriter: !getSettings().typewriter }) },
@@ -64,13 +64,13 @@ export function CommandPalette() {
         { id: 'quick-note', group: 'Actions', label: 'Quick idea to inbox', hint: 'Ctrl+Shift+N', icon: <StickyNote size={14} />, run: () => setNav({ quickNote: true }) },
         { id: 'characters', group: 'Go to', label: 'Character', also: 'Characters', icon: <Users size={14} />, run: () => go({ view: 'characters', projectId }) },
         { id: 'maps', group: 'Go to', label: 'Map', also: 'Maps', icon: <Globe size={14} />, run: () => go({ view: 'maps', projectId }) },
-        { id: 'family', group: 'Go to', label: 'Tree', also: 'Family trees', icon: <Users size={14} />, run: () => go({ view: 'family', projectId }) },
-        { id: 'relationships', group: 'Go to', label: 'Relation', also: 'Relationships', icon: <Users size={14} />, run: () => go({ view: 'relationships', projectId }) },
+        { id: 'family', group: 'Go to', label: 'Tree', also: 'Family trees', icon: <Network size={14} />, run: () => go({ view: 'family', projectId }) },
+        { id: 'relationships', group: 'Go to', label: 'Relation', also: 'Relationships', icon: <HeartHandshake size={14} />, run: () => go({ view: 'relationships', projectId }) },
         { id: 'timelines', group: 'Go to', label: 'Timeline', also: 'Timelines', icon: <StickyNote size={14} />, run: () => go({ view: 'timelines', projectId }) },
         { id: 'world', group: 'Go to', label: 'Worldbuilding', icon: <Globe size={14} />, run: () => go({ view: 'world', projectId }) },
         { id: 'notes', group: 'Go to', label: 'Notes', icon: <StickyNote size={14} />, run: () => go({ view: 'notes', projectId }) },
         { id: 'tasks', group: 'Go to', label: 'Tasks', icon: <StickyNote size={14} />, run: () => go({ view: 'tasks', projectId }) },
-        { id: 'trash', group: 'Go to', label: 'Trash', icon: <StickyNote size={14} />, run: () => go({ view: 'trash' }) },
+        { id: 'trash', group: 'Go to', label: 'Trash', icon: <Trash2 size={14} />, run: () => (projectId ? setNav({ panel: { view: 'trash' } }) : go({ view: 'trash' })) },
         { id: 'search', group: 'Go to', label: 'Search this project', hint: 'Ctrl+Shift+F', icon: <Search size={14} />, run: () => go({ view: 'search', projectId }) },
         { id: 'backup', group: 'Actions', label: 'Export full backup of this project', icon: <Download size={14} />, run: () => exportBackupFile(projectId) },
       );

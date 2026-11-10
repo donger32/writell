@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import {
   Home, BookOpen, Star, Settings as Cog, HelpCircle, PanelLeftClose, PanelLeftOpen, Plus, ChevronRight,
-  FileText, Pencil, Copy, Trash2, Search, LayoutGrid, MessagesSquare, Shield, Columns2, FolderOpen, Users, Globe, StickyNote, Network, HeartHandshake, GanttChart, BarChart3, Map as MapIcon, Pin, PinOff, ListChecks, Clock,
+  FileText, Pencil, Copy, Trash2, Search, LayoutGrid, MessagesSquare, Shield, Columns2, FolderOpen, Users, Contact, Globe, StickyNote, Network, HeartHandshake, GanttChart, BarChart3, Map as MapIcon, Pin, PinOff, ListChecks, Clock,
 } from 'lucide-react';
 import { orderedTools } from '../sidebarTools';
 import { SyncBadge } from './AccountSettings';
@@ -16,7 +16,7 @@ import { openEntity } from './story/links';
 import { type Entity, db, createChapter, createScene, duplicateChapter, reorderChapters, moveScene, type Chapter, type Scene } from '../db';
 import { deleteChapter, deleteScene } from '../trash';
 import { toastTrashed } from './TrashView';
-import { go, openProject, setNav, useNav, getRecentScenes, getRecentEntities } from '../nav';
+import { go, openProject, setNav, togglePanel, useNav, getRecentScenes, getRecentEntities } from '../nav';
 import { setSettings, useSettings, togglePin, isPinned } from '../settings';
 import { confirmDialog, openMenu, promptDialog, rowKeys, STATUS_COLOR, COLOR_PALETTE, Modal } from './ui';
 import { fmtNum } from '../util';
@@ -34,7 +34,7 @@ function WsBtn({ label, icon: I, active, onClick, dot }: { label: string; icon: 
 
 export function Sidebar() {
   const s = useSettings();
-  const { route } = useNav();
+  const { route, panel } = useNav();
   const projectId = 'projectId' in route ? route.projectId : route.view === 'statistics' && route.scope ? route.scope : 'from' in route && route.from ? route.from : null;
   const project = useLiveQuery(() => (projectId ? db.projects.get(projectId) : undefined), [projectId]);
   const [collapsed, toggle] = useCollapsed();
@@ -85,17 +85,17 @@ export function Sidebar() {
           <div className="sb-ws-row" role="navigation" aria-label="Workspace">
             <WsBtn label="Home" icon={Home} active={route.view === 'home'} onClick={() => go({ view: 'home' })} />
             <WsBtn label="All projects" icon={LayoutGrid} active={route.view === 'projects'} onClick={() => go({ view: 'projects' })} />
-            {s.showStats && <WsBtn label="Statistics" icon={BarChart3} active={route.view === 'statistics'} onClick={() => go({ view: 'statistics', scope: project.id })} />}
-            <WsBtn label={social.incoming.length ? `Friends (${social.incoming.length} requests)` : 'Friends'} icon={Users} active={route.view === 'friends'} onClick={() => go({ view: 'friends', from: project.id })} dot={!!social.incoming.length} />
-            <WsBtn label={trashCount ? `Trash (${trashCount})` : 'Trash'} icon={Trash2} active={route.view === 'trash'} onClick={() => go({ view: 'trash', from: project.id })} dot={!!trashCount} />
-            {staff && <WsBtn label="Admin" icon={Shield} active={route.view === 'admin'} onClick={() => go({ view: 'admin', from: project.id })} />}
+            {s.showStats && <WsBtn label="Statistics" icon={BarChart3} active={panel?.view === 'statistics'} onClick={() => togglePanel({ view: 'statistics', scope: project.id })} />}
+            <WsBtn label={social.incoming.length ? `Friends (${social.incoming.length} requests)` : 'Friends'} icon={Contact} active={panel?.view === 'friends'} onClick={() => togglePanel({ view: 'friends' })} dot={!!social.incoming.length} />
+            <WsBtn label={trashCount ? `Trash (${trashCount})` : 'Trash'} icon={Trash2} active={panel?.view === 'trash'} onClick={() => togglePanel({ view: 'trash' })} dot={!!trashCount} />
+            {staff && <WsBtn label="Admin" icon={Shield} active={panel?.view === 'admin'} onClick={() => togglePanel({ view: 'admin' })} />}
           </div>
         ) : (
           <Section id="workspace" label="Workspace" collapsed={collapsed} toggle={toggle} icon={icon}>
             <Item label="Home" icon={Home} active={route.view === 'home'} onClick={() => go({ view: 'home' })} />
             <Item label="Projects" icon={LayoutGrid} active={route.view === 'projects'} onClick={() => go({ view: 'projects' })} />
             {s.showStats && <Item label="Statistics" icon={BarChart3} active={route.view === 'statistics'} onClick={() => go({ view: 'statistics', ...(project ? { scope: project.id } : {}) })} />}
-            <Item label="Friends" icon={Users} active={route.view === 'friends'} onClick={() => go({ view: 'friends', from: project?.id })} badge={social.incoming.length ? String(social.incoming.length) : undefined} />
+            <Item label="Friends" icon={Contact} active={route.view === 'friends'} onClick={() => go({ view: 'friends', from: project?.id })} badge={social.incoming.length ? String(social.incoming.length) : undefined} />
             <Item label="Trash" icon={Trash2} active={route.view === 'trash'} onClick={() => go({ view: 'trash', from: project?.id })} badge={trashCount ? String(trashCount) : undefined} />
             {staff && <Item label="Admin" icon={Shield} active={route.view === 'admin'} onClick={() => go({ view: 'admin', from: project?.id })} />}
           </Section>

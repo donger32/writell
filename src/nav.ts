@@ -42,7 +42,10 @@ export interface NavState {
   exportFor: string | null; // project id when the export dialog is open
   shareFor: string | null;  // project id when the share dialog is open
   joinLink: string | null;  // invite link being joined ('' = paste one)
+  /** a page opened on top of the current one (statistics, friends, trash, admin): closing it puts you back where you were */
+  panel: Panel | null;
 }
+export type Panel = { view: 'statistics'; scope?: string } | { view: 'friends' } | { view: 'trash' } | { view: 'admin' };
 
 const KEY = 'inkwell.nav.v1';
 function loadRoute(): Route {
@@ -55,7 +58,7 @@ function loadTabs(): string[] {
   try { return JSON.parse(localStorage.getItem(TKEY) || '[]'); } catch { return []; }
 }
 
-let state: NavState = { route: loadRoute(), settingsOpen: false, settingsTab: 'appearance', paletteOpen: false, helpOpen: false, fullscreen: false, reading: false, tabs: loadTabs(), quickNote: false, editing: getSettings().startMode === 'editing', newProject: false, exportFor: null, shareFor: null, joinLink: null, tracking: false };
+let state: NavState = { route: loadRoute(), settingsOpen: false, settingsTab: 'appearance', paletteOpen: false, helpOpen: false, fullscreen: false, reading: false, tabs: loadTabs(), quickNote: false, editing: getSettings().startMode === 'editing', newProject: false, exportFor: null, shareFor: null, joinLink: null, tracking: false, panel: null };
 const ls = new Set<() => void>();
 
 export function setNav(p: Partial<NavState>) {
@@ -80,7 +83,9 @@ export function setNav(p: Partial<NavState>) {
   if (p.route || p.tabs) { try { localStorage.setItem(TKEY, JSON.stringify(state.tabs)); } catch { /* */ } }
   ls.forEach((l) => l());
 }
-export const go = (route: Route) => setNav({ route, reading: false });
+export const go = (route: Route) => setNav({ route, reading: false, panel: null });
+/** open a panel over the current page, or close it if it's already open */
+export const togglePanel = (p: Panel) => setNav({ panel: state.panel?.view === p.view ? null : p });
 export const useNav = () => useSyncExternalStore((l) => { ls.add(l); return () => ls.delete(l); }, () => state);
 export const getNav = () => state;
 
