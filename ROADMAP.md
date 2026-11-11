@@ -2,6 +2,12 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.18.2 — new address
+
+No database changes.
+
+- The GitHub account was renamed, so the website is now at **miosun01.github.io/writell** (the old address no longer works). Invite links, the app's update address and the docs use the new name.
+
 ## Changes in v0.18.1 — small brushes, right-click on things
 
 No database changes.
@@ -181,7 +187,7 @@ No database changes.
 - Supabase: supabase/writell-stage-a.sql (+ writell-stage-a-fix.sql for the blocked list).
 
 ## Changes in v0.11.0 — GitHub
-- Code lives at github.com/donger32/writell. The website is published to GitHub Pages (donger32.github.io/writell) on every push, and the Windows installer is built on GitHub and published on the Releases page.
+- Code lives at github.com/miosun01/writell. The website is published to GitHub Pages (miosun01.github.io/writell) on every push, and the Windows installer is built on GitHub and published on the Releases page.
 - PC app: one-click updates ("Writell X is available → Update now"), signed and checked against the app's built-in key.
 - The PC app can clean up old .writell.json backup files (it only allowed .inkwell.json before).
 

@@ -1,5 +1,5 @@
 # Publishes the web version (phone / Chromebook / any browser) to
-# https://donger32.github.io/writell/ on every push to main.
+# https://miosun01.github.io/writell/ on every push to main.
 name: Publish website
 on:
   push:

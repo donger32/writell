@@ -155,7 +155,7 @@ export function JoinDialog({ initial, onClose }: { initial?: string; onClose: ()
           <div><button className="btn primary" onClick={() => setNav({ settingsOpen: true, settingsTab: 'account' })}>Sign in or create an account</button></div>
         </> : <>
           <p className="muted">Paste the invite link your friend sent you.</p>
-          <input className="input mono" value={text} onChange={(e) => setText(e.target.value)} placeholder="https://donger32.github.io/writell/#invite=…" />
+          <input className="input mono" value={text} onChange={(e) => setText(e.target.value)} placeholder="https://miosun01.github.io/writell/#invite=…" />
           {msg && <p className="small danger-text">{msg}</p>}
           <div className="row gap-s">
             <button className="btn primary" disabled={busy || !text.trim()} onClick={async () => {

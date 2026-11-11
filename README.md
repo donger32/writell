@@ -22,7 +22,7 @@ A local-first novel-writing app. Runs as a **desktop app on your PC** and as an 
 
 ## Where Writell lives
 
-- **Website / phone:** https://donger32.github.io/writell/. The `Publish website` workflow republishes it on every push to `main`. On iPhone: open it in Safari → Share → Add to Home Screen.
+- **Website / phone:** https://miosun01.github.io/writell/. The `Publish website` workflow republishes it on every push to `main`. On iPhone: open it in Safari → Share → Add to Home Screen.
 - **PC installer:** the `Build Windows app` workflow builds it on GitHub whenever the version in `package.json` changes, and publishes it on the Releases page with a signed `latest.json`.
 - **PC updates:** from 0.11.0 on, the app checks GitHub Releases and offers **Update now**. Updates are signed with the key stored in the repo secret `TAURI_SIGNING_PRIVATE_KEY`; the matching public key is in `src-tauri/tauri.conf.json`. Keep that secret: without it, new versions can't be signed.
 
