@@ -10,6 +10,7 @@ import { SmartMarks } from './smartMarks';
 import { CommentMark, FlagMark } from './reviewMarks';
 import { InsertionMark, DeletionMark, TrackChanges } from './trackChanges';
 import { CharacterMentions, type MentionName } from './mentions';
+import { SmoothCaret } from './caret';
 
 /** Dims every top-level block except the one containing the cursor */
 export const FocusParagraph = Extension.create<{ enabled: () => boolean }>({
@@ -62,7 +63,7 @@ export function editorExtensions(focusEnabled: () => boolean, tracking: () => bo
     CharacterCount,
     FocusParagraph.configure({ enabled: focusEnabled }),
     TrackChanges.configure({ enabled: tracking }),
-    ...(mentions ? [CharacterMentions.configure(mentions)] : []),
+    ...(mentions ? [CharacterMentions.configure(mentions), SmoothCaret] : []),
   ];
 }
 

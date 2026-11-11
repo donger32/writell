@@ -71,7 +71,7 @@ export function ToastHost() {
 }
 
 /* ---------- Context menu ---------- */
-export interface MenuItem { label: string; icon?: ReactNode; onClick: () => void; danger?: boolean; divider?: boolean; /** smaller grey text after the label */ hint?: string }
+export interface MenuItem { label: string; icon?: ReactNode; onClick: () => void; danger?: boolean; divider?: boolean; disabled?: boolean; /** smaller grey text after the label */ hint?: string }
 let menu: { x: number; y: number; items: MenuItem[] } | null = null;
 const ml = new Set<() => void>();
 const setMenu = (m: typeof menu) => { menu = m; ml.forEach((l) => l()); };
@@ -133,7 +133,7 @@ export function MenuHost() {
   return (
     <div ref={ref} className="ctxmenu" role="menu" style={{ left: pos.x, top: pos.y }} onMouseDown={(e) => e.stopPropagation()}>
       {m.items.map((it, i) => it.divider ? <div key={i} className="sep" role="separator" /> : (
-        <button key={i} role="menuitem" className={it.danger ? 'danger' : ''} onClick={() => { setMenu(null); it.onClick(); }}>
+        <button key={i} role="menuitem" className={it.danger ? 'danger' : ''} disabled={it.disabled} onClick={() => { setMenu(null); it.onClick(); }}>
           <span className="ico">{it.icon}</span><span className="menu-label">{it.label}{it.hint && <span className="menu-hint">{it.hint}</span>}</span>
         </button>
       ))}

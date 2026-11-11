@@ -4,7 +4,7 @@ import { AccountSettings } from './AccountSettings';
 import { SHORTCUTS, combo, comboFromEvent } from '../shortcuts';
 import { TEMPLATES } from '../templates';
 import { defaultTools, orderedTools } from '../sidebarTools';
-import { ALL_TOOLS, EDITOR_THEMES, FONTS, THEMES, cursorPreview, resetSettings, setSettings, useSettings, type EditorTheme, type Theme } from '../settings';
+import { ALL_TOOLS, EDITOR_THEMES, FONTS, THEMES, CURSORS, ACCENTS, cursorPreview, resetSettings, setSettings, useSettings, type EditorTheme, type Theme } from '../settings';
 import { setNav, useNav } from '../nav';
 import { Modal, confirmDialog, promptDialog, toast } from './ui';
 import { isTauri, requestPersistentStorage } from '../platform';
@@ -67,6 +67,10 @@ export function SettingsModal() {
                 </button>
               ))}
             </div>
+            <div className="accent-row" role="radiogroup" aria-label="Accent colour">
+              <span className="muted small">Accent</span>
+              {ACCENTS.map((c) => <button key={c} role="radio" aria-checked={s.theme.accent === c} aria-label={`Accent ${c}`} className={'swatch big' + (s.theme.accent === c ? ' on' : '')} style={{ background: c }} onClick={() => setTheme({ accent: c })} />)}
+            </div>
             <div className="color-row">
               <Color label="Accent" value={s.theme.accent} onChange={(v) => setTheme({ accent: v })} />
               <Color label="Background" value={s.theme.bg} onChange={(v) => setTheme({ bg: v })} />
@@ -81,14 +85,41 @@ export function SettingsModal() {
             </div>
 
             <h3>Mouse cursor</h3>
-            <div className="seg" role="radiogroup" aria-label="Mouse cursor">
-              {([['system', 'System'], ['black', 'Black'], ['white', 'White'], ['outline', 'Outline']] as const).map(([v, l]) => (
+            <div className="cursor-grid" role="radiogroup" aria-label="Mouse cursor">
+              {CURSORS.map(({ id: v, label: l }) => (
                 <button key={v} role="radio" aria-checked={(s.mouseCursor ?? 'system') === v} className={'cursor-opt' + ((s.mouseCursor ?? 'system') === v ? ' on' : '')} onClick={() => setSettings({ mouseCursor: v })}>
-                  {v !== 'system' && <span className="cursor-swatch" style={{ backgroundImage: cursorPreview(v) }} aria-hidden="true" />}{l}
+                  {v !== 'system' ? <span className="cursor-swatch" style={{ backgroundImage: cursorPreview(v, s.theme.accent) }} aria-hidden="true" /> : <span className="cursor-swatch sys" aria-hidden="true" />}{l}
                 </button>
               ))}
             </div>
-            <p className="muted small">Writell's own smooth pointer. It only changes inside Writell; the rest of your computer keeps its usual cursor.</p>
+            {(s.mouseCursor ?? 'system') !== 'system' && <Slider label="Cursor size" value={s.cursorSize ?? 21} min={14} max={44} step={1} onChange={(v) => setSettings({ cursorSize: v })} fmt={(v) => v + 'px'} />}
+            <p className="muted small">Writell's own pointer only changes inside Writell; the rest of your computer keeps its usual one. Accent, Glow and Pencil follow your accent colour.</p>
+            <label className="field"><span>Pointer effect</span>
+              <div className="seg" role="radiogroup" aria-label="Pointer effect">
+                {([['none', 'None'], ['ripple', 'Click ripple'], ['trail', 'Trail'], ['sparkle', 'Sparkles']] as const).map(([v, l]) => <button key={v} role="radio" aria-checked={(s.cursorFx ?? 'none') === v} className={(s.cursorFx ?? 'none') === v ? 'on' : ''} onClick={() => setSettings({ cursorFx: v })}>{l}</button>)}
+              </div>
+            </label>
+
+            <h3>Text cursor</h3>
+            <p className="muted small">The blinking line where you type.</p>
+            <div className="seg" role="radiogroup" aria-label="Text cursor shape">
+              {([['native', 'Browser'], ['line', 'Line'], ['bar', 'Thick'], ['block', 'Block'], ['underline', 'Underline']] as const).map(([v, l]) => (
+                <button key={v} role="radio" aria-checked={(s.caretStyle ?? 'native') === v} className={'caret-opt' + ((s.caretStyle ?? 'native') === v ? ' on' : '')} onClick={() => setSettings({ caretStyle: v })}>
+                  <span className={'caret-swatch ' + v} aria-hidden="true">a</span>{l}
+                </button>
+              ))}
+            </div>
+            {(s.caretStyle ?? 'native') !== 'native' && <>
+              <label className="check"><input type="checkbox" checked={s.caretSmooth ?? true} onChange={(e) => setSettings({ caretSmooth: e.target.checked })} /> Glide smoothly between letters</label>
+              <div className="row gap-m wrap">
+                <label className="field"><span>Blink</span>
+                  <div className="seg">{([['blink', 'Blink'], ['fade', 'Fade'], ['solid', 'Steady']] as const).map(([v, l]) => <button key={v} className={(s.caretBlink ?? 'blink') === v ? 'on' : ''} onClick={() => setSettings({ caretBlink: v })}>{l}</button>)}</div>
+                </label>
+                <label className="field"><span>Colour</span>
+                  <div className="seg">{([['accent', 'Accent'], ['text', 'Text']] as const).map(([v, l]) => <button key={v} className={(s.caretColor ?? 'accent') === v ? 'on' : ''} onClick={() => setSettings({ caretColor: v })}>{l}</button>)}</div>
+                </label>
+              </div>
+            </>}
             <h3>Writing area</h3>
             <p className="muted small">The page you write on can look different from the rest of the app.</p>
             <div className="theme-grid">
@@ -203,7 +234,7 @@ export function SettingsModal() {
             {!isTauri() && <p className="muted">Clearing this browser's data for this site deletes the copy stored here. Keep backup files, or use an account so your writing is also synced.</p>}
             <h3>Reset</h3>
             <button className="btn ghost sm" onClick={async () => { if (await confirmDialog('Reset all appearance and editor settings?', 'Your projects are not affected.', { ok: 'Reset' })) { resetSettings(); toast('Settings reset'); } }}>Reset settings to defaults</button>
-            <p className="muted small">Writell 0.18.2</p>
+            <p className="muted small">Writell 0.19.0</p>
           </>}
         </div>
       </div>

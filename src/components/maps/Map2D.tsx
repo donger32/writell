@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { objDef, renderTopDown, smoothLine, strokePts, strokeWidth, worldSize, type MapObject, type Pin, type Tool } from '../../mapdata';
+import { objDef, renderTopDown, smoothLine, strokePts, strokeWidth, worldSize, type MapLook, type MapObject, type Pin, type Tool } from '../../mapdata';
 import type { JourneyDraw } from './Terrain3D';
 import { uiZoom } from '../ui';
 
@@ -11,7 +11,7 @@ export interface Map2DProps {
   objects: MapObject[]; selectedObject: string | null; pendingLine: { u: number; v: number } | null;
   onPlaceObject: (u: number, v: number) => void; onSelectObject: (id: string | null) => void; onMoveObject: (id: string, du: number, dv: number) => void;
   snapshotRef?: React.MutableRefObject<(() => string) | null>;
-  drawLine: boolean; journeys: JourneyDraw[]; heightScale?: number;
+  drawLine: boolean; journeys: JourneyDraw[]; heightScale?: number; look?: MapLook; onOpenCharacter?: (id: string) => void;
   carryId: string | null; onCarryEnd: () => void; onThingMenu: (id: string, x: number, y: number) => void;
 }
 
@@ -163,10 +163,16 @@ export function Map2D(p: Map2DProps) {
       onPointerLeave={() => setCursor(null)}
       style={{ cursor: p.carryId ? 'move' : p.tool === 'view' ? 'grab' : p.tool === 'pin' || p.tool === 'object' || p.tool === 'journey' ? 'crosshair' : p.tool === 'select' ? 'pointer' : 'none' }}>
       <div className="map2d-stage" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
-        <div className="map2d-board" ref={board} style={{ aspectRatio: String(p.aspect), ['--a' as string]: String(p.aspect) }}>
+        <div className={'map2d-board' + (p.look && !p.look.labels ? ' hide-names' : '')} ref={board} style={{ aspectRatio: String(p.aspect), ['--a' as string]: String(p.aspect) }}>
           <canvas ref={canvas} width={RES} height={H} />
           <Things2D objects={p.objects} selected={p.selectedObject} pending={p.pendingLine} N={p.N} aspect={p.aspect} journeys={p.journeys} k={view.k} />
           {cursor && <div className="map2d-brush" style={{ left: `${cursor.x * 100}%`, top: `${cursor.y * 100}%`, width: `${(p.brush * 2 / (p.N - 1)) * 100}%`, aspectRatio: String(1 / p.aspect) }} />}
+          {p.objects.filter((o) => o.kind === 'character').map((o) => (
+            <span key={o.id} className={'map-char flat' + (o.id === p.selectedObject ? ' on' : '')} style={{ left: `${o.u * 100}%`, top: `${o.v * 100}%`, ['--cc' as string]: o.color ?? '#8b7cf6', transform: `translate(-50%, -50%) scale(${1 / view.k})` }}
+              onDoubleClick={() => o.entityId && p.onOpenCharacter?.(o.entityId)}>
+              <span className="map-char-dot">{(o.name || '?').trim().charAt(0).toUpperCase()}</span><span className="map-char-name">{o.name || 'Character'}</span>
+            </span>
+          ))}
           {p.pins.map((pin) => (
             <button key={pin.id} data-pin={pin.id} className={'map2d-pin' + (pin.id === p.selectedPin ? ' on' : '')} style={{ left: `${pin.u * 100}%`, top: `${pin.v * 100}%`, ['--pin' as string]: pin.color, transform: `translate(-50%, -100%) scale(${1 / view.k})` }}>
               <span className="pin-dot" /><span className="pin-label">{pin.label || 'Pin'}</span>
@@ -199,11 +205,11 @@ function Things2D({ objects, selected, pending, N, aspect, journeys, k: zoom }: 
         return <path key={o.id} d={toPath(ps)} fill="none" stroke={on ? '#8b7cf6' : o.color ?? objDef(o.kind).color} strokeWidth={Math.max(minPx * 0.8, strokeWidth(o) * unit)} strokeLinecap="round" strokeLinejoin="round" opacity={o.kind === 'river' ? 0.92 : 1} />;
       })}
       {objects.map((o) => {
-        if (o.pts) return null;
+        if (o.pts || o.kind === 'character') return null;
         const def = objDef(o.kind), c = o.color ?? def.color, on = o.id === selected;
         const x = o.u * VW, y = o.v * VH, k = o.scale * def.real;
         const stroke = on ? '#8b7cf6' : 'rgba(0,0,0,.55)', sw = on ? 2.5 : 1;
-        if (o.u2 !== undefined) return <line key={o.id} x1={x} y1={y} x2={o.u2 * VW} y2={(o.v2 ?? o.v) * VH} stroke={on ? '#8b7cf6' : c} strokeWidth={sz((o.kind === 'bridge' ? 1.4 : o.kind === 'fence' ? 0.15 : 0.6) * k)} strokeLinecap="round" />;
+        if (o.u2 !== undefined) return <line key={o.id} x1={x} y1={y} x2={o.u2 * VW} y2={(o.v2 ?? o.v) * VH} stroke={on ? '#8b7cf6' : c} strokeWidth={sz((o.kind === 'bridge' || o.kind === 'dock' ? 1.4 : o.kind === 'fence' ? 0.15 : o.kind === 'palisade' ? 0.35 : 0.6) * k)} strokeLinecap="round" />;
         const rot = (-o.rot * 180) / Math.PI;
         const [w, d] = def.fp ?? [2, 2];
         if (def.round) return <circle key={o.id} cx={x} cy={y} r={sz((w / 2) * k)} fill={c} stroke={stroke} strokeWidth={sw} vectorEffect="non-scaling-stroke" />;

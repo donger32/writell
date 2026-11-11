@@ -36,6 +36,7 @@ export interface NavState {
   fullscreen: boolean;
   reading: boolean;
   tabs: string[]; // open scene ids (all projects)
+  pinnedTabs: string[]; // tabs kept at the front, small, and not closed by "close others"
   quickNote: boolean;
   editing: boolean; // editing (revision) mode vs writing mode
   newProject: boolean;
@@ -55,11 +56,13 @@ function loadRoute(): Route {
 }
 
 const TKEY = 'inkwell.tabs.v1';
+const PKEY = 'writell.pinnedTabs.v1';
+function loadPinned(): string[] { try { return JSON.parse(localStorage.getItem(PKEY) || '[]'); } catch { return []; } }
 function loadTabs(): string[] {
   try { return JSON.parse(localStorage.getItem(TKEY) || '[]'); } catch { return []; }
 }
 
-let state: NavState = { route: loadRoute(), settingsOpen: false, settingsTab: 'appearance', paletteOpen: false, helpOpen: false, fullscreen: false, reading: false, tabs: loadTabs(), quickNote: false, editing: getSettings().startMode === 'editing', newProject: false, exportFor: null, shareFor: null, joinLink: null, tracking: false, panel: null };
+let state: NavState = { route: loadRoute(), settingsOpen: false, settingsTab: 'appearance', paletteOpen: false, helpOpen: false, fullscreen: false, reading: false, tabs: loadTabs(), pinnedTabs: loadPinned(), quickNote: false, editing: getSettings().startMode === 'editing', newProject: false, exportFor: null, shareFor: null, joinLink: null, tracking: false, panel: null };
 const ls = new Set<() => void>();
 
 export function setNav(p: Partial<NavState>) {
@@ -82,6 +85,7 @@ export function setNav(p: Partial<NavState>) {
     }
   }
   if (p.route || p.tabs) { try { localStorage.setItem(TKEY, JSON.stringify(state.tabs)); } catch { /* */ } }
+  if (p.pinnedTabs) { try { localStorage.setItem(PKEY, JSON.stringify(state.pinnedTabs)); } catch { /* */ } }
   ls.forEach((l) => l());
 }
 export const go = (route: Route) => setNav({ route, reading: false, panel: null });
@@ -116,6 +120,7 @@ export async function openProject(projectId: string) {
 /** Close a scene tab; if it was the active one, move to a neighbouring tab of the same project */
 export async function closeTab(sceneId: string) {
   const r = state.route;
+  if (state.pinnedTabs.includes(sceneId)) setNav({ pinnedTabs: state.pinnedTabs.filter((t) => t !== sceneId) });
   const idx = state.tabs.indexOf(sceneId);
   const tabs = state.tabs.filter((t) => t !== sceneId);
   if (r.view === 'write' && (r.sceneId === sceneId || r.splitSceneId === sceneId)) {

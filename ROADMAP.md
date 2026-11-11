@@ -2,6 +2,18 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.19.0 — more themes, cursors, tabs, and people on maps
+
+No database changes.
+
+- **Themes:** 18 app themes (new: Ocean, Dusk, Rose, Mocha, Arctic, Moss, Ink, Snow, Sand, Sakura, Mint, Lavender), 12 quick accent colours, and 13 writing-page themes.
+- **Mouse cursor:** new Accent, Glow, Classic, Dot and Pencil pointers, a size slider, and pointer effects (click ripple, trail, sparkles; off for people who prefer less motion).
+- **Text cursor:** choose a line, thick line, block or underline that glides between letters, with blink / fade / steady and accent or text colour. "Browser" keeps the normal one.
+- **Tabs:** pin tabs (they stay at the front), a marker shows where a dragged tab will land, the chapter's colour marks each tab, the mouse wheel scrolls the bar, Ctrl+Alt+← / → switches tabs, and the menu adds "Close tabs to the right" and "Show in sidebar".
+- **Characters on maps:** put your characters on a map from the place tool; each stands there as a small figure with their colour and name (one place at a time; placing again moves them). Double-click the name to open the character.
+- **More to place:** hut, tavern, church, watchtower, market stall, gate, campfire, crop field, haystack, cart, signpost, gravestone, standing stone, person, horse, sheep, palm, dead tree, plus palisades and docks (two clicks).
+- **Map options:** time of day (long evening shadows, moonlit night), haze, shadows on/off, a 1 km grid, water colour, show/hide names, and a scale bar in the corner of the 3D view.
+
 ## Changes in v0.18.2 — new address
 
 No database changes.

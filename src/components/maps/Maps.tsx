@@ -10,8 +10,8 @@ import { go } from '../../nav';
 import { registerFlush } from '../../saveRegistry';
 import { saveBinary, safeName } from '../../util';
 import {
-  BIOMES, MAP_SIZES, MAX_N, METERS, OBJECTS, applyBrush, decodeHeights, decodeU8, encode, heightFields, expandMap, generate, heightsFromImage, objDef, sizeLabel, smoothAll, defaultHeight, strokePts,
-  type Journey, type MapObject, type ObjKind, type Pin, type Shape, type Tool,
+  BIOMES, DEFAULT_LOOK, MAP_SIZES, MAX_N, METERS, OBJECTS, WATER_COLORS, applyBrush, decodeHeights, decodeU8, encode, heightFields, expandMap, generate, heightsFromImage, objDef, sizeLabel, smoothAll, defaultHeight, strokePts,
+  type Journey, type MapLook, type MapObject, type ObjKind, type Pin, type Shape, type Tool,
 } from '../../mapdata';
 import type { JourneyDraw, Rect } from './Terrain3D';
 import { Modal, confirmDialog, openMenu, promptDialog, toast } from '../ui';
@@ -163,6 +163,10 @@ function MapEditor({ map }: { map: Entity }) {
   const view = (f.view as '2d' | '3d') ?? '3d';
   const sea = Number(f.seaLevel ?? 0.3), heightScale = Number(f.heightScale ?? 22), aspect = Number(f.aspect ?? 1);
   const pins = (f.pins as Pin[]) ?? [];
+  const look: MapLook = { ...DEFAULT_LOOK, ...((f.look as Partial<MapLook> | undefined) ?? {}) };
+  const setLook = (patch: Partial<MapLook>) => set({ look: { ...look, ...patch } });
+  // which character the place tool puts down (kind === 'character')
+  const [placeChar, setPlaceChar] = useState<string | null>(null);
   const journeys = (f.journeys as Journey[] | undefined) ?? [];
   const setJourneys = (next: Journey[]) => set({ journeys: next });
   const editJ = journeys.find((j) => j.id === selJ);
@@ -290,6 +294,16 @@ function MapEditor({ map }: { map: Entity }) {
       return;
     }
     const def = objDef(kind);
+    if (kind === 'character') {
+      const c = placeChar ? opts?.byId.get(placeChar) : undefined; if (!c) return;
+      snap();
+      const color = String(c.fields.color ?? autoColor(c.name));
+      // a character is in one place at a time: putting them down again moves them
+      const there = objsRef.current.find((o) => o.kind === 'character' && o.entityId === c.id);
+      const o: MapObject = there ? { ...there, u, v, name: c.name, color } : { id: uid(), kind: 'character', u, v, rot: 0, scale: 1, entityId: c.id, name: c.name, color };
+      changeObjs(there ? objsRef.current.map((x) => (x.id === there.id ? o : x)) : [...objsRef.current, o]);
+      return;
+    }
     if (def.line) {
       const start = pendingRef.current;
       if (!start) { setPendingLine({ u, v }); return; }
@@ -347,6 +361,7 @@ function MapEditor({ map }: { map: Entity }) {
     version, tool, brush: effBrush(tool), pins, selectedPin: sel, onStroke, onStrokeEnd: () => { onStrokeEnd(); endMove(); }, onPlacePin: placePin, onSelectPin: (id: string) => setSel(id), snapshotRef: snapshot,
     objects: objs, selectedObject: selObj, pendingLine, onPlaceObject: placeObject, onSelectObject: (id: string | null) => setSelObj(id), onMoveObject: moveObject,
     drawLine, journeys: journeysDraw, carryId: carry, onCarryEnd: endCarry, onThingMenu: thingMenu,
+    look, onOpenCharacter: (id: string) => go({ view: 'characters', projectId: map.projectId, entityId: id }),
   };
 
   const raiseFromPicture = async () => {
@@ -426,7 +441,8 @@ function MapEditor({ map }: { map: Entity }) {
           <div className="map-sheet-head row"><h4 className="grow">Map details</h4><button className="icon-btn sm" aria-label="Close" onClick={() => setSheet(false)}><X size={14} /></button></div>
           {selected && (
             <div className="pin-editor" key={selected.id}>
-              <div className="row"><h4 className="grow">{objDef(selected.kind).label}</h4><button className="icon-btn sm" aria-label="Deselect" onClick={() => setSelObj(null)}><X size={12} /></button></div>
+              <div className="row"><h4 className="grow">{selected.kind === 'character' ? selected.name || 'Character' : objDef(selected.kind).label}</h4><button className="icon-btn sm" aria-label="Deselect" onClick={() => setSelObj(null)}><X size={12} /></button></div>
+              {selected.kind === 'character' && selected.entityId && <button className="btn sm" onClick={() => go({ view: 'characters', projectId: map.projectId, entityId: selected.entityId })}><ExternalLink size={13} /> Open {selected.name || 'character'}</button>}
               {!objDef(selected.kind).line && !objDef(selected.kind).stroke && <label className="mini-range wide"><span><RotateCw size={11} /> Turn</span><input type="range" min={0} max={360} step={5} value={Math.round((((selected.rot * 180) / Math.PI) % 360 + 360) % 360)} onChange={(e) => patchSel({ rot: (+e.target.value * Math.PI) / 180 })} /></label>}
               <label className="mini-range wide"><span><Maximize size={11} /> {objDef(selected.kind).stroke ? 'Width' : 'Size'}</span><input type="range" min={0.25} max={objDef(selected.kind).stroke ? 8 : 6} step={0.05} value={selected.scale} onChange={(e) => patchSel({ scale: +e.target.value })} /></label>
               <div className="row gap-s wrap">
@@ -444,7 +460,18 @@ function MapEditor({ map }: { map: Entity }) {
           {tool === 'object' && !selected && (
             <div className="col gap-s">
               <h4>Place</h4>
-              {groups.map((g) => (
+              {opts && opts.characterOpts.length > 0 && (
+                <div className="col gap-s">
+                  <span className="muted small">Characters</span>
+                  <div className="obj-grid">{opts.characterOpts.map((c) => {
+                    const e = opts.byId.get(c.id); const col = String(e?.fields.color ?? autoColor(e?.name ?? c.label));
+                    const placed = objs.some((o) => o.kind === 'character' && o.entityId === c.id);
+                    return <button key={c.id} className={'obj-btn' + (kind === 'character' && placeChar === c.id ? ' on' : '')} title={placed ? 'Already on the map: clicking the land moves them' : undefined}
+                      onClick={() => { setKind('character'); setPlaceChar(c.id); setPendingLine(null); }}><span className="obj-swatch round" style={{ background: col }} /><span className="ellipsis">{e?.name ?? c.label}</span>{placed && <MapPin size={11} className="muted" />}</button>;
+                  })}</div>
+                </div>
+              )}
+              {groups.filter((g) => g !== 'Characters').map((g) => (
                 <div key={g} className="col gap-s">
                   <span className="muted small">{g}</span>
                   <div className="obj-grid">{OBJECTS.filter((o) => o.group === g).map((o) => (
@@ -452,7 +479,7 @@ function MapEditor({ map }: { map: Entity }) {
                   ))}</div>
                 </div>
               ))}
-              <p className="muted small">{objDef(kind).stroke ? 'Drag across the land to draw it; it follows the ground. Select it (E) to change its width or color.' : objDef(kind).line ? 'Click a start point, then an end point. Walls and fences keep going from where the last piece ended; press Esc to stop.' : 'Click the land to place it. Everything is about real size, so zoom in close to build a village. Use the select tool (E) to move, turn, resize or recolor things, and the remove tool (X) to take them away.'}</p>
+              <p className="muted small">{kind === 'character' ? 'Click the land to put the character there. Their name shows above them; clicking again somewhere else moves them.' : objDef(kind).stroke ? 'Drag across the land to draw it; it follows the ground. Select it (E) to change its width or color.' : objDef(kind).line ? 'Click a start point, then an end point. Walls and fences keep going from where the last piece ended; press Esc to stop.' : 'Click the land to place it. Everything is about real size, so zoom in close to build a village. Use the select tool (E) to move, turn, resize or recolor things, and the remove tool (X) to take them away.'}</p>
             </div>
           )}
           <h4>Journeys</h4>
@@ -532,6 +559,14 @@ function MapEditor({ map }: { map: Entity }) {
           <label className="mini-range wide"><span>Sea level</span><input type="range" min={0} max={0.9} step={0.01} value={sea} onChange={(e) => { full(); set({ seaLevel: +e.target.value }); }} /></label>
           {view === '3d' && <label className="mini-range wide"><span>Height</span><input type="range" min={2} max={200} step={1} value={heightScale} onChange={(e) => { full(); set({ heightScale: +e.target.value }); }} /></label>}
           {view === '3d' && <label className="check small"><input type="checkbox" checked={!!f.lowPoly} onChange={(e) => set({ lowPoly: e.target.checked })} /> Low-poly look</label>}
+          {view === '3d' && <>
+            <label className="mini-range wide" title="Where the sun is: long shadows in the morning and evening, moonlight at night"><span>Time of day <span className="muted">{String(Math.floor(look.hour)).padStart(2, '0')}:{look.hour % 1 ? '30' : '00'}</span></span><input type="range" min={0} max={23.5} step={0.5} value={look.hour} onChange={(e) => setLook({ hour: +e.target.value })} /></label>
+            <label className="mini-range wide"><span>Haze</span><input type="range" min={0} max={1} step={0.05} value={look.haze} onChange={(e) => setLook({ haze: +e.target.value })} /></label>
+            <label className="check small"><input type="checkbox" checked={look.shadows} onChange={(e) => setLook({ shadows: e.target.checked })} /> Shadows</label>
+            <label className="check small"><input type="checkbox" checked={look.grid} onChange={(e) => setLook({ grid: e.target.checked })} /> Grid (1 km squares)</label>
+          </>}
+          <label className="check small"><input type="checkbox" checked={look.labels} onChange={(e) => setLook({ labels: e.target.checked })} /> Show names (pins, characters, journeys)</label>
+          {view === '3d' && <div className="row gap-s wrap" role="radiogroup" aria-label="Water colour"><span className="muted small">Water</span>{WATER_COLORS.map((c) => <button key={c} role="radio" aria-checked={look.water === c} className={'swatch' + (look.water === c ? ' on' : '')} style={{ background: c }} aria-label={`Water ${c}`} onClick={() => setLook({ water: c })} />)}</div>}
           {!!f.image && <label className="check small"><input type="checkbox" checked={!!f.useImage} onChange={(e) => set({ useImage: e.target.checked })} /> Show my picture {view === '3d' ? 'on the land' : 'instead of terrain colors'}</label>}
           <div className="col gap-s">
             <button className="btn sm" onClick={async () => { const d = await pickImage(2048); if (!d) return; const i = new Image(); i.onload = () => set({ image: d, useImage: true, aspect: i.width / i.height }); i.src = d; }}><ImagePlus size={13} /> {f.image ? 'Replace picture' : 'Add a map picture'}</button>

@@ -25,13 +25,14 @@ import { go, setNav, useNav, getNav } from './nav';
 import { useSocial } from './social/api';
 import { db } from './db';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { TabBar } from './components/TabBar';
+import { TabBar, useTabKeys } from './components/TabBar';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { CharactersView } from './components/story/Characters';
 import { WorldView } from './components/story/World';
 import { NotesView, QuickNote } from './components/story/Notes';
 import { GlossaryView } from './components/story/Glossary';
 import { DescEditorHost } from './components/DescPop';
+import { CursorFx } from './components/CursorFx';
 import { SearchView } from './components/story/SearchView';
 import { closeTab } from './nav';
 import { matches, combo } from './shortcuts';
@@ -51,6 +52,7 @@ const PHONE_TITLES: Record<string, string> = {
 };
 
 export default function App() {
+  useTabKeys();
   const s = useSettings();
   const nav = useNav();
   const { route } = nav;
@@ -269,6 +271,7 @@ export default function App() {
       <EffectsLayer />
       <DialogHost />
       <DescEditorHost />
+      <CursorFx />
       <MenuHost />
       <ToastHost />
     </div>

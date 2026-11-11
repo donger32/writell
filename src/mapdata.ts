@@ -32,15 +32,25 @@ export const HMAX = 4;
 
 /* ---------- things you can place ---------- */
 export type ObjKind =
-  | 'house' | 'cottage' | 'barn' | 'tower' | 'castle' | 'temple' | 'windmill' | 'lighthouse' | 'tent' | 'well' | 'ruins' | 'statue' | 'boat'
-  | 'wall' | 'fence' | 'bridge'
+  | 'house' | 'cottage' | 'hut' | 'barn' | 'tavern' | 'church' | 'tower' | 'watchtower' | 'castle' | 'temple' | 'windmill' | 'lighthouse' | 'tent' | 'well' | 'ruins' | 'statue' | 'boat'
+  | 'stall' | 'gate' | 'campfire' | 'field' | 'haystack' | 'cart' | 'signpost' | 'grave' | 'stone'
+  | 'wall' | 'fence' | 'palisade' | 'bridge' | 'dock'
   | 'path' | 'road' | 'street' | 'river'
-  | 'tree' | 'pine' | 'bush' | 'rock' | 'flag';
+  | 'tree' | 'pine' | 'palm' | 'deadtree' | 'bush' | 'rock'
+  | 'person' | 'horse' | 'sheep' | 'character'
+  | 'flag';
 export interface MapObject {
   id: string; kind: ObjKind; u: number; v: number; u2?: number; v2?: number; rot: number; scale: number; color?: string;
   /** drawn lines (paths, roads, rivers): the points as u,v pairs */
   pts?: number[];
+  /** a character from the project, standing on the map */
+  entityId?: string; name?: string;
 }
+
+/** how the map looks (side panel → Look): time of day, shadows, haze, grid, water colour, names */
+export interface MapLook { hour: number; shadows: boolean; haze: number; grid: boolean; labels: boolean; water: string }
+export const DEFAULT_LOOK: MapLook = { hour: 14, shadows: true, haze: 0.5, grid: false, labels: true, water: '#2c6d99' };
+export const WATER_COLORS = ['#2c6d99', '#1f8a8a', '#3f8fc7', '#1d3f66', '#4a7a52', '#6b5a3a'];
 /**
  * line: two clicks (start, end). stroke: drawn by dragging (paths, roads, rivers).
  * real: how big the model is drawn (models are built about 10× too big; this brings them to real size).
@@ -49,8 +59,12 @@ export interface MapObject {
 export const OBJECTS: { kind: ObjKind; label: string; group: string; line?: boolean; stroke?: boolean; color: string; real: number; fp?: [number, number]; round?: boolean; width?: number }[] = [
   { kind: 'house', label: 'House', group: 'Buildings', color: '#c9b18a', real: 0.1, fp: [2.4, 2] },
   { kind: 'cottage', label: 'Cottage', group: 'Buildings', color: '#d8c7a0', real: 0.1, fp: [1.6, 1.4] },
+  { kind: 'hut', label: 'Hut', group: 'Buildings', color: '#a68a62', real: 0.09, fp: [1.5, 1.5], round: true },
   { kind: 'barn', label: 'Barn', group: 'Buildings', color: '#9b4a3c', real: 0.1, fp: [3.2, 2.2] },
+  { kind: 'tavern', label: 'Tavern', group: 'Buildings', color: '#bfa27a', real: 0.11, fp: [3, 2.4] },
+  { kind: 'church', label: 'Church', group: 'Buildings', color: '#d9d2c4', real: 0.13, fp: [2.2, 4] },
   { kind: 'tower', label: 'Tower', group: 'Buildings', color: '#9a958c', real: 0.12, fp: [1.6, 1.6], round: true },
+  { kind: 'watchtower', label: 'Watchtower', group: 'Buildings', color: '#8a6a48', real: 0.1, fp: [1.6, 1.6] },
   { kind: 'castle', label: 'Castle', group: 'Buildings', color: '#a7a198', real: 0.25, fp: [5.6, 5.6] },
   { kind: 'temple', label: 'Temple', group: 'Buildings', color: '#ddd5c4', real: 0.14, fp: [3.2, 4.4] },
   { kind: 'windmill', label: 'Windmill', group: 'Buildings', color: '#e2d8c3', real: 0.12, fp: [1.6, 1.6], round: true },
@@ -60,18 +74,36 @@ export const OBJECTS: { kind: ObjKind; label: string; group: string; line?: bool
   { kind: 'ruins', label: 'Ruins', group: 'Buildings', color: '#a39c90', real: 0.12, fp: [3.4, 3] },
   { kind: 'statue', label: 'Statue', group: 'Buildings', color: '#c7c2b8', real: 0.08, fp: [1.2, 1.2] },
   { kind: 'boat', label: 'Boat', group: 'Buildings', color: '#8a6a48', real: 0.1, fp: [3, 1] },
+  { kind: 'stall', label: 'Market stall', group: 'Village', color: '#c4553f', real: 0.06, fp: [2, 1.4] },
+  { kind: 'gate', label: 'Gate', group: 'Village', color: '#9a958c', real: 0.12, fp: [3, 1] },
+  { kind: 'campfire', label: 'Campfire', group: 'Village', color: '#e8803a', real: 0.05, fp: [1.2, 1.2], round: true },
+  { kind: 'field', label: 'Crop field', group: 'Village', color: '#c9b24f', real: 0.6, fp: [4, 3] },
+  { kind: 'haystack', label: 'Haystack', group: 'Village', color: '#d9be6a', real: 0.06, fp: [1.4, 1.4], round: true },
+  { kind: 'cart', label: 'Cart', group: 'Village', color: '#8a6a48', real: 0.06, fp: [2.2, 1.2] },
+  { kind: 'signpost', label: 'Signpost', group: 'Village', color: '#8a6a48', real: 0.05, fp: [0.6, 0.6], round: true },
+  { kind: 'grave', label: 'Gravestone', group: 'Village', color: '#9c9a95', real: 0.04, fp: [0.8, 0.4] },
+  { kind: 'stone', label: 'Standing stone', group: 'Village', color: '#8d8a86', real: 0.1, fp: [0.9, 0.6] },
+  { kind: 'person', label: 'Person', group: 'People & animals', color: '#4f7cc4', real: 0.06, fp: [0.6, 0.6], round: true },
+  { kind: 'horse', label: 'Horse', group: 'People & animals', color: '#7a5236', real: 0.06, fp: [1.8, 0.6] },
+  { kind: 'sheep', label: 'Sheep', group: 'People & animals', color: '#ece8df', real: 0.04, fp: [1.2, 0.7] },
   { kind: 'path', label: 'Dirt path', group: 'Paths & water', stroke: true, color: '#a5875f', real: 1, width: 3 },
   { kind: 'road', label: 'Road', group: 'Paths & water', stroke: true, color: '#9a8f80', real: 1, width: 7 },
   { kind: 'street', label: 'City street', group: 'Paths & water', stroke: true, color: '#6f6b67', real: 1, width: 12 },
   { kind: 'river', label: 'River', group: 'Paths & water', stroke: true, color: '#3f7fb4', real: 1, width: 24 },
   { kind: 'wall', label: 'Wall', group: 'Lines', line: true, color: '#8f8a82', real: 0.1 },
   { kind: 'fence', label: 'Fence', group: 'Lines', line: true, color: '#8a6a48', real: 0.1 },
+  { kind: 'palisade', label: 'Palisade', group: 'Lines', line: true, color: '#7a5a3c', real: 0.1 },
   { kind: 'bridge', label: 'Bridge', group: 'Lines', line: true, color: '#8a6a48', real: 0.1 },
+  { kind: 'dock', label: 'Dock', group: 'Lines', line: true, color: '#8a6a48', real: 0.1 },
   { kind: 'tree', label: 'Tree', group: 'Nature', color: '#3f7d3a', real: 0.1, fp: [1.9, 1.9], round: true },
   { kind: 'pine', label: 'Pine', group: 'Nature', color: '#2d5e3a', real: 0.13, fp: [1.7, 1.7], round: true },
+  { kind: 'palm', label: 'Palm', group: 'Nature', color: '#4c9a4a', real: 0.12, fp: [1.8, 1.8], round: true },
+  { kind: 'deadtree', label: 'Dead tree', group: 'Nature', color: '#6b5a48', real: 0.1, fp: [1.2, 1.2], round: true },
   { kind: 'bush', label: 'Bush', group: 'Nature', color: '#4c8a3f', real: 0.08, fp: [1.4, 1.4], round: true },
   { kind: 'rock', label: 'Rock', group: 'Nature', color: '#8d8a86', real: 0.12, fp: [1.6, 1.6], round: true },
   { kind: 'flag', label: 'Flag', group: 'Markers', color: '#e06c75', real: 0.1, fp: [0.6, 0.6], round: true },
+  // a character from the project (placed from the Characters list; drawn with their colour and name)
+  { kind: 'character', label: 'Character', group: 'Characters', color: '#8b7cf6', real: 0.06, fp: [0.7, 0.7], round: true },
 ];
 export const objDef = (k: ObjKind) => OBJECTS.find((o) => o.kind === k) ?? OBJECTS[0];
 /** width of a drawn line (path, road, river) in 3D units */

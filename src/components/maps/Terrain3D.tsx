@@ -5,7 +5,7 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
-import { HMAX, cellColor, colorJitter, objDef, renderTopDown, slopeAt, smoothLine, strokePts, strokeWidth, worldSize, type MapObject, type Pin, type Tool } from '../../mapdata';
+import { HMAX, METERS, cellColor, colorJitter, objDef, renderTopDown, slopeAt, smoothLine, strokePts, strokeWidth, worldSize, type MapLook, type MapObject, type Pin, type Tool } from '../../mapdata';
 
 /** the land is cut into tiles of this many cells, so painting only rebuilds the tiles under the brush */
 const TILE = 64;
@@ -33,6 +33,8 @@ export interface TerrainProps {
   carryId: string | null; onCarryEnd: () => void;
   /** right-click on a placed thing */
   onThingMenu: (id: string, x: number, y: number) => void;
+  look?: MapLook;
+  onOpenCharacter?: (entityId: string) => void;
   /** the part of the grid that changed since the last draw (null = everything) */
   dirtyRef: React.MutableRefObject<Rect | null>;
   onStroke: (cx: number, cy: number, first: boolean) => void; onStrokeEnd: () => void;
@@ -46,6 +48,7 @@ interface State {
   renderer: THREE.WebGLRenderer; labels: CSS2DRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls;
   land: THREE.Group; chunks: Chunk[]; material: THREE.MeshStandardMaterial; water: THREE.Mesh; skirt: THREE.Mesh; ring: THREE.Mesh; pins: THREE.Group;
   strokes: THREE.Group; journeys: THREE.Group; sun: THREE.DirectionalLight; follow: () => void; ripples: THREE.Texture;
+  charLabels: THREE.Group; hemi: THREE.HemisphereLight; setSun: (dir: THREE.Vector3) => void; scaleBar: HTMLDivElement;
   objects: THREE.Group; owners: Map<THREE.InstancedMesh, string[]>; marker: THREE.Mesh; render: () => void; tex?: THREE.Texture; key: string;
   mini: HTMLDivElement; drawMiniBase: () => void; drawMiniMark: () => void; miniT: number;
 }
@@ -74,13 +77,15 @@ export function Terrain3D(p: TerrainProps) {
     scene.background = skyTexture();
     scene.fog = new THREE.Fog(new THREE.Color(HORIZON), 220, 420);
     const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 4000);
-    scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x4a3f33, 0.6));
+    const hemi = new THREE.HemisphereLight(0xcfe0ff, 0x4a3f33, 0.6); scene.add(hemi);
+    let sunDir = SUN_DIR.clone();
     // the sun follows where you're looking, so its shadows stay sharp near you on any size of map
     const sun = new THREE.DirectionalLight(0xfff1dc, 2.7); sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004;
     scene.add(sun, sun.target);
 
     const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 });
+    const gridU = { value: 0 }; material.userData.gridU = gridU;
     // fine grain on the ground that shows up close (patches of grass, dirt and stones), and fades out with distance
     material.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vGrainPos;')
@@ -92,7 +97,10 @@ float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 *
   return mix(mix(gHash(i), gHash(i + vec2(1.0, 0.0)), f.x), mix(gHash(i + vec2(0.0, 1.0)), gHash(i + vec2(1.0, 1.0)), f.x), f.y); }
 float grain(vec2 p, float k) { float fade = clamp(1.0 - fwidth(p.x * k) * 1.5, 0.0, 1.0); return (gNoise(p * k) - 0.5) * fade; }`)
         .replace('#include <color_fragment>', `#include <color_fragment>
-diffuseColor.rgb *= 1.0 + grain(vGrainPos.xz, 0.35) * 0.22 + grain(vGrainPos.xz, 2.2) * 0.16 + grain(vGrainPos.xz, 11.0) * 0.1;`);
+diffuseColor.rgb *= 1.0 + grain(vGrainPos.xz, 0.35) * 0.22 + grain(vGrainPos.xz, 2.2) * 0.16 + grain(vGrainPos.xz, 11.0) * 0.1;
+if (uGrid > 0.0) { vec2 g = abs(fract(vGrainPos.xz / uGrid + 0.5) - 0.5) / fwidth(vGrainPos.xz / uGrid); float ln = 1.0 - min(min(g.x, g.y), 1.0); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), ln * 0.35); }`)
+        .replace('varying vec3 vGrainPos;', 'varying vec3 vGrainPos;\nuniform float uGrid;');
+      sh.uniforms.uGrid = gridU;
     };
     const land = new THREE.Group(); scene.add(land);
     // the map is a block of land, like a diorama: earth walls around the sides and underneath,
@@ -111,6 +119,7 @@ diffuseColor.rgb *= 1.0 + grain(vGrainPos.xz, 0.35) * 0.22 + grain(vGrainPos.xz,
     const pins = new THREE.Group(); scene.add(pins);
     const objects = new THREE.Group(); scene.add(objects);
     const strokes = new THREE.Group(); scene.add(strokes);
+    const charLabels = new THREE.Group(); scene.add(charLabels);
     const journeys = new THREE.Group(); scene.add(journeys);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -123,6 +132,8 @@ diffuseColor.rgb *= 1.0 + grain(vGrainPos.xz, 0.35) * 0.22 + grain(vGrainPos.xz,
     const render = () => { if (!rq) rq = requestAnimationFrame(renderNow); };
     controls.screenSpacePanning = false; // right-drag slides along the ground, so you can travel across big worlds
 
+    const scaleBar = document.createElement('div'); scaleBar.className = 'map-scale'; el.appendChild(scaleBar);
+    const setSun = (d: THREE.Vector3) => { sunDir = d.clone().normalize(); follow(); };
     const groundAt = (u: number, v: number) => surfaceRef.current(Math.max(0, Math.min(1, u)), Math.max(0, Math.min(1, v)));
 
     // ---- overview map in the corner (big maps): where you are, click or drag to go somewhere
@@ -189,11 +200,17 @@ diffuseColor.rgb *= 1.0 + grain(vGrainPos.xz, 0.35) * 0.22 + grain(vGrainPos.xz,
     const follow = () => {
       const t = controls.target, dist = camera.position.distanceTo(t), fog = scene.fog as THREE.Fog, big = isBig(props.current.N);
       // on big maps the far-off land fades away, so there is always more out there
-      fog.near = dist * (big ? 1.1 : 1.6); fog.far = dist * (big ? 2.8 : 3.4);
+      const hz = props.current.look?.haze ?? 0.5, hk = hz <= 0.001 ? 1000 : 1 / (0.2 + hz * 1.6);
+      fog.near = dist * (big ? 1.1 : 1.6) * hk; fog.far = dist * (big ? 2.8 : 3.4) * hk;
+      // the scale bar: a round distance about 90 px long
+      const h = renderer.domElement.clientHeight || 1, pxPerUnit = h / (2 * dist * Math.tan((camera.fov * Math.PI) / 360));
+      const want = (90 / pxPerUnit) * METERS, mag = 10 ** Math.floor(Math.log10(want)), nice = [1, 2, 5, 10].map((m) => m * mag).find((m) => m >= want * 0.6) ?? mag * 10;
+      scaleBar.style.setProperty('--w', `${Math.round((nice / METERS) * pxPerUnit)}px`);
+      scaleBar.dataset.label = nice >= 1000 ? `${nice / 1000} km` : `${nice} m`;
       camera.near = Math.max(0.01, Math.min(5, dist * 0.01)); camera.far = Math.max(dims().S0 * 6, dist * 10); camera.updateProjectionMatrix();
       const half = Math.max(1.5, Math.min(dims().S0 * 0.75, dist * 1.25)), top = props.current.heightScale * HMAX;
       const R = half * 2 + top;
-      sun.target.position.copy(t); sun.position.copy(t).addScaledVector(SUN_DIR, R);
+      sun.target.position.copy(t); sun.position.copy(t).addScaledVector(sunDir, R);
       const sc = sun.shadow.camera;
       sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.near = 0.1; sc.far = R * 2 + top; sc.updateProjectionMatrix();
       sun.shadow.normalBias = (2 * half / 2048) * 1.5;
@@ -231,7 +248,7 @@ diffuseColor.rgb *= 1.0 + grain(vGrainPos.xz, 0.35) * 0.22 + grain(vGrainPos.xz,
       camera.aspect = w / Math.max(1, h); camera.updateProjectionMatrix(); renderNow();
     };
     const ro = new ResizeObserver(resize); ro.observe(el);
-    S.current = { renderer, labels, scene, camera, controls, land, chunks: [], material, water, skirt, ring, pins, objects, owners: new Map(), marker, render, key: '', mini, drawMiniBase, drawMiniMark, miniT: 0, strokes, journeys, sun, follow, ripples };
+    S.current = { renderer, labels, scene, camera, controls, land, chunks: [], material, water, skirt, ring, pins, objects, owners: new Map(), marker, render, key: '', mini, drawMiniBase, drawMiniMark, miniT: 0, strokes, journeys, sun, follow, ripples, charLabels, hemi, setSun, scaleBar };
     if (p.snapshotRef) p.snapshotRef.current = () => { renderNow(); return renderer.domElement.toDataURL('image/png'); };
 
     // ---- pointer: sculpt / paint / place pins and things / pick and move things
@@ -575,6 +592,18 @@ diffuseColor.rgb *= 1.0 + grain(vGrainPos.xz, 0.35) * 0.22 + grain(vGrainPos.xz,
         for (let i = 0; i < n; i++) {
           const t = (i + 0.5) / n; const c = place(o.u + (o.u2 - o.u) * t, o.v + (o.v2 - o.v) * t);
           const along = new THREE.Vector3(len / n + 0.01 * k, k, k);
+          if (o.kind === 'palisade') {
+            for (const f of [-0.3, 0, 0.3]) add('pal-log', () => new THREE.CylinderGeometry(0.13, 0.13, 1.8, 6).translate(0, 0.9, 0), M(c.clone().add(new THREE.Vector3(f * (len / n), 0, 0).applyAxisAngle(UP, rot)), rot, k, T()), base, o.id);
+            for (const f of [-0.3, 0, 0.3]) add('pal-tip', () => new THREE.ConeGeometry(0.13, 0.4, 6).translate(0, 2, 0), M(c.clone().add(new THREE.Vector3(f * (len / n), 0, 0).applyAxisAngle(UP, rot)), rot, k, T()), base, o.id);
+            continue;
+          }
+          if (o.kind === 'dock') {
+            const y = Math.max(c.y, sea * heightScale) + 0.3 * k;
+            const cc = new THREE.Vector3(c.x, y, c.z);
+            add('dock-deck', () => new THREE.BoxGeometry(1, 0.12, 1.6), new THREE.Matrix4().compose(cc, q(rot), along), base, o.id);
+            if (i % 2 === 0) for (const z of [-0.7, 0.7]) add('dock-post', () => new THREE.CylinderGeometry(0.09, 0.09, 1.6, 6).translate(0, -0.6, 0), M(cc.clone().add(new THREE.Vector3(0, 0, z * k).applyAxisAngle(UP, rot)), rot, k, T()), '#5a3f2a', o.id);
+            continue;
+          }
           if (o.kind === 'wall') {
             add('wall', () => new THREE.BoxGeometry(1, 1.6, 0.5).translate(0, 0.6, 0), new THREE.Matrix4().compose(c, q(rot), along), base, o.id);
             if (i % 2 === 0) add('crenel', () => new THREE.BoxGeometry(0.35, 0.35, 0.55).translate(0, 1.55, 0), M(c, rot, k, T()), base, o.id);
@@ -588,6 +617,22 @@ diffuseColor.rgb *= 1.0 + grain(vGrainPos.xz, 0.35) * 0.22 + grain(vGrainPos.xz,
       }
       const at = place(o.u, o.v);
       for (const part of SHAPES[o.kind] ?? []) add(part.key, part.geo, M(at, o.rot, k, part.local), part.color === 'main' ? base : part.color, o.id);
+    }
+    // characters always show their name above them, so they're easy to find on a big map
+    s.charLabels.children.slice().forEach((c) => { s.charLabels.remove(c); if (c instanceof CSS2DObject) c.element.remove(); });
+    for (const o of objects) {
+      if (o.kind !== 'character') continue;
+      const el = document.createElement('button');
+      el.className = 'map-char' + (o.id === selectedObject ? ' on' : ''); el.style.setProperty('--cc', o.color ?? objDef(o.kind).color);
+      const nm = o.name || 'Character';
+      el.innerHTML = `<span class="map-char-dot">${nm.trim().charAt(0).toUpperCase() || '?'}</span><span class="map-char-name"></span>`;
+      (el.querySelector('.map-char-name') as HTMLElement).textContent = nm;
+      el.title = `${nm} — click to select, double-click to open`;
+      el.addEventListener('pointerdown', (e) => { e.stopPropagation(); props.current.onSelectObject(o.id); });
+      el.addEventListener('dblclick', (e) => { e.stopPropagation(); if (o.entityId) props.current.onOpenCharacter?.(o.entityId); });
+      el.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); props.current.onThingMenu(o.id, e.clientX, e.clientY); });
+      const lab = new CSS2DObject(el); const q2 = place(o.u, o.v); lab.position.set(q2.x, q2.y + 1.05 * o.scale * objDef(o.kind).real, q2.z);
+      s.charLabels.add(lab);
     }
     for (const [key, e] of parts) {
       const im = new THREE.InstancedMesh(e.geo, MATERIAL, e.mats.length);
@@ -657,6 +702,30 @@ diffuseColor.rgb *= 1.0 + grain(vGrainPos.xz, 0.35) * 0.22 + grain(vGrainPos.xz,
     s.render();
   }, [p.objects, p.selectedObject, p.pendingLine, p.version, p.heightScale, p.sea, geoKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ---- how the map looks: time of day, shadows, haze, grid, names, water colour
+  useEffect(() => {
+    const s = S.current!; const L = { ...DEFAULT_LOOK_3D, ...(p.look ?? {}) };
+    // the sun climbs from the east (+x) at 6:00, is highest at 13:00 and sets in the west at 20:00; after dark a dim moonlight
+    const h = L.hour, day = h >= 6 && h <= 20;
+    const t = Math.max(0, Math.min(1, (h - 6) / 14)), el = day ? Math.sin(t * Math.PI) : 0.55;
+    const az = day ? Math.PI * (1 - t) : Math.PI * 0.35;
+    const dir = new THREE.Vector3(Math.cos(az) * Math.cos(el * 1.25), Math.max(0.12, Math.sin(el * 1.25)), 0.45).normalize();
+    s.setSun(dir);
+    const low = day ? Math.max(0, 1 - Math.sin(t * Math.PI) * 2.2) : 0; // golden hour near sunrise / sunset
+    const sunCol = !day ? new THREE.Color('#8fa6d8') : new THREE.Color('#fff1dc').lerp(new THREE.Color('#ffae6b'), low);
+    s.sun.color.copy(sunCol); s.sun.intensity = day ? 2.7 - low * 0.3 : 1.15;
+    s.hemi.intensity = day ? 0.6 + low * 0.25 : 0.75; s.hemi.color.set(day ? '#cfe0ff' : '#7f93c4');
+    const top = !day ? '#0b1430' : lerpHex(SKY_TOP, '#7c86b8', low), hor = !day ? '#28365a' : lerpHex(HORIZON, '#f2c79c', low);
+    s.scene.background = skyTexture(top, hor);
+    (s.scene.fog as THREE.Fog).color.set(hor);
+    s.sun.castShadow = L.shadows;
+    (s.material.userData.gridU as { value: number }).value = L.grid ? 1000 / METERS : 0;
+    s.labels.domElement.classList.toggle('hide-names', !L.labels);
+    ((s.water.material as THREE.MeshStandardMaterial).color).set(L.water);
+    s.material.needsUpdate = false;
+    s.follow(); s.render();
+  }, [p.look]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---- journeys: where characters travel, as coloured dashed lines with a dot at each stop
   useEffect(() => {
     const s = S.current!; const { W, D } = dims();
@@ -718,6 +787,14 @@ const gable = (w: number, h: number, d: number) => () => {
   const shape = new THREE.Shape(); shape.moveTo(-w / 2, 0); shape.lineTo(w / 2, 0); shape.lineTo(0, h); shape.closePath();
   return new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false }).translate(0, 0, -d / 2);
 };
+/** a little standing figure (body in the main colour) */
+function PERSON(main: string): Part[] {
+  return [
+    { key: 'p-legs', geo: () => new THREE.CylinderGeometry(0.13, 0.11, 0.42, 7).translate(0, 0.21, 0), local: T(), color: '#3a3530' },
+    { key: 'p-body', geo: () => new THREE.CylinderGeometry(0.11, 0.17, 0.4, 7).translate(0, 0.62, 0), local: T(), color: main },
+    { key: 'p-head', geo: () => new THREE.SphereGeometry(0.12, 9, 7).translate(0, 0.93, 0), local: T(), color: '#e2b98f' },
+  ];
+}
 const SHAPES: Record<string, Part[]> = {
   house: [{ key: 'house-body', geo: box(2.4, 1.6, 2), local: T(), color: 'main' }, { key: 'house-roof', geo: roof(1.9, 1.3), local: T(0, 1.6), color: '#8c3b2e' }],
   cottage: [{ key: 'cottage-body', geo: box(1.6, 1.1, 1.4), local: T(), color: 'main' }, { key: 'cottage-roof', geo: roof(1.35, 1.1), local: T(0, 1.1), color: '#b8953c' }],
@@ -764,6 +841,70 @@ const SHAPES: Record<string, Part[]> = {
     { key: 'boat-mast', geo: cyl(0.05, 2.4, 6), local: T(0, 0.45), color: '#6b4f35' },
     { key: 'boat-sail', geo: () => { const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(0, 1.9); sh.lineTo(1.1, 0); sh.closePath(); return new THREE.ShapeGeometry(sh).translate(0.08, 0.7, 0); }, local: T(), color: '#efe8da' },
   ],
+  hut: [{ key: 'hut-body', geo: cyl(0.75, 0.9, 8), local: T(), color: 'main' }, { key: 'hut-roof', geo: cone(1, 1.1, 8), local: T(0, 0.9), color: '#b8953c' }],
+  tavern: [
+    { key: 'tav-body', geo: box(3, 1.4, 2.4), local: T(), color: 'main' }, { key: 'tav-upper', geo: box(3.2, 1.1, 2.6), local: T(0, 1.4), color: '#e6dccb' },
+    { key: 'tav-roof', geo: gable(3.4, 1.3, 2.8), local: T(0, 2.5), color: '#6e3a2c' },
+    { key: 'tav-sign', geo: () => new THREE.BoxGeometry(0.06, 0.45, 0.6).translate(1.65, 1.15, 0.6), local: T(), color: '#d9a441' },
+    { key: 'tav-chimney', geo: box(0.35, 1, 0.35), local: T(-1, 3), color: '#7a6a60' },
+  ],
+  church: [
+    { key: 'ch-nave', geo: box(2.2, 2, 3.6), local: T(0, 0, 0.3), color: 'main' }, { key: 'ch-roof', geo: gable(2.5, 1.4, 3.8), local: T(0, 2, 0.3), color: '#5a6a7a' },
+    { key: 'ch-tower', geo: box(1.1, 3.6, 1.1), local: T(0, 0, -1.9), color: 'main' }, { key: 'ch-spire', geo: cone(0.75, 2.2, 4), local: T(0, 3.6, -1.9), color: '#5a6a7a' },
+  ],
+  watchtower: [
+    ...[[-0.6, -0.6], [0.6, -0.6], [0.6, 0.6], [-0.6, 0.6]].map(([x, z]) => ({ key: 'wt-leg', geo: box(0.16, 3.4, 0.16), local: T(x, 0, z), color: 'main' })),
+    { key: 'wt-deck', geo: box(1.7, 0.15, 1.7), local: T(0, 3.2), color: 'main' }, { key: 'wt-rail', geo: box(1.7, 0.5, 1.7), local: T(0, 3.35), color: '#6b4f35' },
+    { key: 'wt-roof', geo: cone(1.3, 1, 4), local: new THREE.Matrix4().compose(new THREE.Vector3(0, 3.9, 0), new THREE.Quaternion().setFromAxisAngle(UP, Math.PI / 4), new THREE.Vector3(1, 1, 1)), color: '#5a4a3c' },
+  ],
+  stall: [
+    ...[[-0.9, -0.6], [0.9, -0.6], [0.9, 0.6], [-0.9, 0.6]].map(([x, z]) => ({ key: 'stall-post', geo: box(0.08, 1.6, 0.08), local: T(x, 0, z), color: '#6b4f35' })),
+    { key: 'stall-table', geo: box(2, 0.8, 1.2), local: T(), color: '#8a6a48' }, { key: 'stall-awning', geo: gable(2.3, 0.5, 1.6), local: T(0, 1.6), color: 'main' },
+  ],
+  gate: [
+    { key: 'gate-l', geo: box(0.9, 3.2, 1), local: T(-1.05), color: 'main' }, { key: 'gate-r', geo: box(0.9, 3.2, 1), local: T(1.05), color: 'main' },
+    { key: 'gate-top', geo: box(3, 0.8, 1), local: T(0, 2.6), color: 'main' }, { key: 'gate-door', geo: box(1.2, 2.3, 0.15), local: T(0, 0, 0.1), color: '#5a3f2a' },
+  ],
+  campfire: [
+    ...[0, 1, 2, 3, 4, 5].map((i) => ({ key: 'fire-stone', geo: () => new THREE.DodecahedronGeometry(0.16, 0).translate(0, 0.1, 0), local: T(Math.cos(i) * 0.5, 0, Math.sin(i) * 0.5), color: '#7a7670' })),
+    { key: 'fire-flame', geo: cone(0.3, 0.7, 6), local: T(), color: 'main' }, { key: 'fire-core', geo: cone(0.16, 0.45, 5), local: T(0, 0.05), color: '#ffd166' },
+  ],
+  field: [
+    { key: 'field-soil', geo: box(4, 0.04, 3), local: T(), color: '#6e5536' },
+    ...[-1.2, -0.6, 0, 0.6, 1.2].map((z) => ({ key: 'field-row', geo: box(3.8, 0.07, 0.32), local: T(0, 0.01, z), color: 'main' })),
+  ],
+  haystack: [{ key: 'hay', geo: () => new THREE.SphereGeometry(0.75, 9, 6, 0, Math.PI * 2, 0, Math.PI / 2), local: T(), color: 'main' }],
+  cart: [
+    { key: 'cart-bed', geo: box(1.8, 0.5, 1), local: T(0, 0.55), color: 'main' },
+    ...[-0.55, 0.55].map((z) => ({ key: 'cart-wheel', geo: () => new THREE.CylinderGeometry(0.45, 0.45, 0.1, 10).rotateX(Math.PI / 2).translate(0, 0.45, 0), local: T(0, 0, z), color: '#5a3f2a' })),
+    { key: 'cart-shaft', geo: box(1.2, 0.08, 0.08), local: T(1.4, 0.55, 0), color: '#5a3f2a' },
+  ],
+  signpost: [{ key: 'sign-post', geo: cyl(0.06, 2.2, 6), local: T(), color: 'main' }, { key: 'sign-a', geo: box(1.1, 0.25, 0.06), local: T(0.35, 1.75), color: '#c9a66b' }, { key: 'sign-b', geo: box(0.9, 0.25, 0.06), local: new THREE.Matrix4().compose(new THREE.Vector3(-0.2, 1.35, 0), new THREE.Quaternion().setFromAxisAngle(UP, 2.4), new THREE.Vector3(1, 1, 1)), color: '#c9a66b' }],
+  grave: [{ key: 'grave', geo: () => { const sh = new THREE.Shape(); sh.moveTo(-0.4, 0); sh.lineTo(0.4, 0); sh.lineTo(0.4, 0.8); sh.absarc(0, 0.8, 0.4, 0, Math.PI, false); sh.lineTo(-0.4, 0); return new THREE.ExtrudeGeometry(sh, { depth: 0.16, bevelEnabled: false }).translate(0, 0, -0.08); }, local: T(), color: 'main' }],
+  stone: [{ key: 'stone', geo: () => new THREE.BoxGeometry(0.8, 3, 0.5, 1, 2, 1).translate(0, 1.4, 0), local: new THREE.Matrix4().makeRotationZ(0.06), color: 'main' }],
+  palm: [
+    { key: 'palm-trunk', geo: () => new THREE.CylinderGeometry(0.1, 0.18, 3.2, 6).translate(0, 1.6, 0), local: new THREE.Matrix4().makeRotationZ(0.12), color: '#8a6a48' },
+    ...[0, 1, 2, 3, 4, 5].map((i) => ({ key: 'palm-leaf', geo: () => new THREE.BoxGeometry(1.5, 0.05, 0.38).translate(0.75, 0, 0).rotateZ(-0.35), local: new THREE.Matrix4().compose(new THREE.Vector3(0.38, 3.15, 0), new THREE.Quaternion().setFromAxisAngle(UP, (i / 6) * Math.PI * 2), new THREE.Vector3(1, 1, 1)), color: 'main' })),
+  ],
+  deadtree: [
+    { key: 'dead-trunk', geo: () => new THREE.CylinderGeometry(0.1, 0.2, 2.6, 5).translate(0, 1.3, 0), local: T(), color: 'main' },
+    { key: 'dead-branch', geo: () => new THREE.CylinderGeometry(0.04, 0.08, 1.2, 4).translate(0, 0.6, 0).rotateZ(-0.9), local: T(0, 1.4), color: 'main' },
+    { key: 'dead-branch', geo: () => new THREE.CylinderGeometry(0.04, 0.08, 1.2, 4).translate(0, 0.6, 0).rotateZ(-0.9), local: new THREE.Matrix4().compose(new THREE.Vector3(0, 1.9, 0), new THREE.Quaternion().setFromAxisAngle(UP, 2.6), new THREE.Vector3(0.8, 0.8, 0.8)), color: 'main' },
+  ],
+  person: PERSON('main'),
+  character: PERSON('main'),
+  horse: [
+    { key: 'horse-body', geo: box(1, 0.4, 0.32), local: T(0, 0.55), color: 'main' },
+    ...[[-0.38, -0.1], [0.38, -0.1], [-0.38, 0.1], [0.38, 0.1]].map(([x, z]) => ({ key: 'horse-leg', geo: box(0.08, 0.56, 0.08), local: T(x, 0, z), color: 'main' })),
+    { key: 'horse-neck', geo: () => new THREE.BoxGeometry(0.18, 0.5, 0.18).translate(0, 0.25, 0).rotateZ(-0.6), local: T(0.45, 0.8), color: 'main' },
+    { key: 'horse-head', geo: box(0.38, 0.18, 0.16), local: T(0.78, 1.08), color: 'main' },
+    { key: 'horse-tail', geo: box(0.06, 0.4, 0.06), local: T(-0.53, 0.55), color: '#2e2219' },
+  ],
+  sheep: [
+    { key: 'sheep-body', geo: () => new THREE.IcosahedronGeometry(0.42, 0).scale(1.25, 0.9, 0.9).translate(0, 0.62, 0), local: T(), color: 'main' },
+    { key: 'sheep-head', geo: () => new THREE.SphereGeometry(0.17, 7, 5).translate(0.55, 0.72, 0), local: T(), color: '#2e2a26' },
+    ...[[-0.25, -0.15], [0.25, -0.15], [-0.25, 0.15], [0.25, 0.15]].map(([x, z]) => ({ key: 'sheep-leg', geo: box(0.07, 0.4, 0.07), local: T(x, 0, z), color: '#2e2a26' })),
+  ],
   flag: [{ key: 'flag-pole', geo: cyl(0.06, 3, 6), local: T(), color: '#e8e2d6' }, { key: 'flag-cloth', geo: () => new THREE.BoxGeometry(1.2, 0.7, 0.05).translate(0.6, 2.6, 0), local: T(), color: 'main' }],
   tree: [{ key: 'trunk', geo: cyl(0.15, 1, 6), local: T(), color: '#6b4f35' }, { key: 'tree-top', geo: () => new THREE.IcosahedronGeometry(0.95, 0).translate(0, 1.6, 0), local: T(), color: 'main' }],
   pine: [{ key: 'trunk', geo: cyl(0.15, 1, 6), local: T(), color: '#6b4f35' }, { key: 'pine-top', geo: cone(0.85, 2.4, 7), local: T(0, 0.6), color: 'main' }],
@@ -773,8 +914,10 @@ const SHAPES: Record<string, Part[]> = {
 const ROAD_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
 const RIVER_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0, transparent: true, opacity: 0.9, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
 
+const DEFAULT_LOOK_3D: MapLook = { hour: 14, shadows: true, haze: 0.5, grid: false, labels: true, water: '#2c6d99' };
+const lerpHex = (a: string, b: string, t: number) => '#' + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
 /** the sky behind everything: a vertical gradient */
-function skyTexture() {
+function skyTexture(SKY_TOP = '#6f9bc8', HORIZON = '#d5e1ea') {
   const c = document.createElement('canvas'); c.width = 2; c.height = 256;
   const g = c.getContext('2d')!; const gr = g.createLinearGradient(0, 0, 0, 256);
   gr.addColorStop(0, SKY_TOP); gr.addColorStop(0.6, HORIZON); gr.addColorStop(0.75, HORIZON); gr.addColorStop(1, '#93a5b5');
