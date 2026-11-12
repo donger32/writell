@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { objDef, renderTopDown, smoothLine, strokePts, strokeWidth, worldSize, type MapLook, type MapObject, type Pin, type Tool } from '../../mapdata';
 import type { JourneyDraw } from './Terrain3D';
-import { uiZoom } from '../ui';
+import { ZoomMeter, uiZoom } from '../ui';
 
 export interface Map2DProps {
   N: number; heights: Float32Array; paint: Uint8Array; sea: number; aspect: number;
@@ -67,6 +67,7 @@ export function Map2D(p: Map2DProps) {
     };
   });
 
+  const maxK = 8 * Math.max(1, p.N / 160);
   const local = (e: { clientX: number; clientY: number }) => {
     const r = board.current!.getBoundingClientRect();
     return { u: (e.clientX - r.left) / r.width, v: (e.clientY - r.top) / r.height };
@@ -103,7 +104,7 @@ export function Map2D(p: Map2DProps) {
   const onWheel = (e: React.WheelEvent) => {
     const r = wrap.current!.getBoundingClientRect();
     const z = uiZoom(); const mx = (e.clientX - r.left) / z, my = (e.clientY - r.top) / z;
-    const k = Math.max(0.4, Math.min(8 * Math.max(1, p.N / 160), view.k * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+    const k = Math.max(0.4, Math.min(maxK, view.k * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
     setView({ k, x: mx - ((mx - view.x) * k) / view.k, y: my - ((my - view.y) * k) / view.k });
   };
 
@@ -180,9 +181,12 @@ export function Map2D(p: Map2DProps) {
           ))}
         </div>
       </div>
-      <div className="row gap-s map2d-reset">
+      <div className="row gap-s map2d-reset" onPointerDown={(e) => e.stopPropagation()}>
         {p.N > 160 && <button className="btn sm" onClick={() => setView(startView())}>Reset view</button>}
         <button className="btn sm" onClick={() => setView({ x: 0, y: 0, k: 1 })}>{p.N > 160 ? 'Whole map' : 'Reset view'}</button>
+        {/* zoom without a scroll wheel: keeps the middle of the view in the middle */}
+        <ZoomMeter value={view.k} min={0.4} max={maxK} label={`${Math.round(view.k * 100)}%`}
+          onChange={(k) => { const w = wrap.current?.clientWidth ?? 0, h = wrap.current?.clientHeight ?? 0; setView((v) => ({ k, x: w / 2 - ((w / 2 - v.x) * k) / v.k, y: h / 2 - ((h / 2 - v.y) * k) / v.k })); }} />
       </div>
     </div>
   );

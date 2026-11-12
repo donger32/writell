@@ -1,8 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFlowWatchdog } from './flowWatchdog';
-import { ReactFlow, Background, Controls, MiniMap, NodeResizer, Handle, Position, BaseEdge, EdgeLabelRenderer, ConnectionMode, useInternalNode, useStore, useNodesState, useEdgesState, type Node, type Edge, type NodeProps, type EdgeProps, type ReactFlowInstance } from '@xyflow/react';
+import { ReactFlow, Background, MiniMap, NodeResizer, Handle, Position, BaseEdge, EdgeLabelRenderer, ConnectionMode, useInternalNode, useStore, useNodesState, useEdgesState, type Node, type Edge, type NodeProps, type EdgeProps, type ReactFlowInstance } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { FlowZoom } from './FlowZoom';
 import { Wand2, X, Plus, Trash2, ExternalLink, SlidersHorizontal, Network, Circle, Grid3x3, Square, Type, Maximize2, Minimize2 } from 'lucide-react';
 import { db, uid, type Entity, type Link } from '../../db';
 import { addLink, colorOf, createEntity, removeLink, updateEntity, updateLinkData, sideLabel, sideKey } from '../../entities';
@@ -372,7 +373,7 @@ export function RelationshipMapView({ projectId }: { projectId: string }) {
             onEdgeClick={(_e, ed) => { setSel(ed.id); setSelNote(null); }} onPaneClick={() => { setSel(null); setSelNote(null); }}
             onNodeClick={(_e, n) => { if (n.id.startsWith('note:')) { setSelNote(n.id.slice(5)); setSel(null); } else { setSelNote(null); setFocus((f) => (f === n.id ? '' : f)); } }}>
             <Background gap={24} size={1} color="var(--border)" />
-            <Controls showInteractive={false} />
+            <FlowZoom min={0.05} max={2.5} />
             {nodes.length > 25 && <MiniMap pannable zoomable nodeColor={(n) => (n.type === 'char' ? colorOf((n.data as CData).e) : 'transparent')} nodeStrokeColor={(n) => (n.type === 'box' ? (n.data as NData).note.color : 'transparent')} maskColor="color-mix(in srgb, var(--bg) 70%, transparent)" style={{ background: 'var(--panel)' }} />}
           </ReactFlow>
           {note && (

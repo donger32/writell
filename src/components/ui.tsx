@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { ChevronDown, Dices } from 'lucide-react';
+import { ChevronDown, Dices, Minus, Plus } from 'lucide-react';
 import { NAME_STYLES, getNameStyle, makeName, setNameStyle } from '../names';
 
 /* ---------- Promise-based dialogs (native confirm/prompt are unreliable in desktop webviews) ---------- */
@@ -192,5 +192,23 @@ export function NameDice({ onName, size = 15 }: { onName: (name: string) => void
         <ChevronDown size={12} />
       </button>
     </span>
+  );
+}
+
+/* ---------- zoom meter: − / slider / + for anyone without a scroll wheel ---------- */
+/** `value` is a zoom factor (bigger = closer); the slider moves evenly on a log scale between min and max */
+export function ZoomMeter({ value, min, max, onChange, onFit, fitLabel = 'Fit', label, className = '', step = 1.5, fitOn }: {
+  value: number; min: number; max: number; onChange: (z: number) => void; onFit?: () => void; fitLabel?: string; label?: string; className?: string; step?: number; fitOn?: boolean;
+}) {
+  const clamp = (z: number) => Math.max(min, Math.min(max, z));
+  const toS = (z: number) => Math.round((Math.log(clamp(z) / min) / Math.log(max / min)) * 1000);
+  const fromS = (s: number) => min * Math.pow(max / min, s / 1000);
+  return (
+    <div className={'zoom-meter ' + className} role="group" aria-label="Zoom" onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+      <button type="button" className="icon-btn sm" title="Zoom out" aria-label="Zoom out" onClick={() => onChange(clamp(value / step))}><Minus size={14} /></button>
+      <input type="range" min={0} max={1000} value={toS(value)} aria-label="Zoom level" onChange={(e) => onChange(fromS(+e.target.value))} />
+      <button type="button" className="icon-btn sm" title="Zoom in" aria-label="Zoom in" onClick={() => onChange(clamp(value * step))}><Plus size={14} /></button>
+      {onFit ? <button type="button" className={'btn ghost sm zoom-fit' + (fitOn ? ' on-text' : '')} onClick={onFit} title="Back to the starting view">{fitLabel}</button> : label ? <span className="zoom-label muted small">{label}</span> : null}
+    </div>
   );
 }

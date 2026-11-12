@@ -1,10 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ReactFlow, Background, Controls, MiniMap, Handle, Position, MarkerType, useNodesState, useEdgesState,
+  ReactFlow, Background, MiniMap, Handle, Position, MarkerType, useNodesState, useEdgesState,
   type Node, type Edge, type NodeProps, type Connection, type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { FlowZoom } from './FlowZoom';
 import { Plus, Wand2, Trash2, Pencil, UserPlus, X, ExternalLink } from 'lucide-react';
 import { db, type Entity, type Link } from '../../db';
 import { createEntity, updateEntity, deleteEntity, removeLink, updateLinkData } from '../../entities';
@@ -177,7 +178,7 @@ function TreeCanvas({ tree, projectId }: { tree: Entity; projectId: string }) {
           onConnect={(c) => setPending(c)}
           deleteKeyCode={null}>
           <Background gap={24} size={1} color="var(--border)" />
-          <Controls showInteractive={false} />
+          <FlowZoom min={0.15} max={2} padding={0.3} />
           <MiniMap pannable zoomable nodeColor="var(--accent)" maskColor="color-mix(in srgb, var(--bg) 70%, transparent)" style={{ background: 'var(--panel)' }} />
         </ReactFlow>
         {!members.length && <div className="canvas-empty"><p className="muted">Add the first person with “Add person”, then build outwards with parents, children, spouses and siblings.</p></div>}

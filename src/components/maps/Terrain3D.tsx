@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import { ZoomMeter } from '../ui';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
@@ -61,6 +62,8 @@ export function Terrain3D(p: TerrainProps) {
   const lastLook = useRef<{ sea: number; hs: number; lowPoly: boolean }>({ sea: NaN, hs: NaN, lowPoly: false });
   const dims = () => { const W0 = worldSize(props.current.N); return { W: W0 * props.current.aspect, D: W0, S0: W0 }; };
   const surfaceRef = useRef<(u: number, v: number) => number>(() => 0);
+  const onDist = useRef<((d: number, min: number, max: number) => void) | null>(null);
+  const startView = useRef<(() => void) | null>(null);
 
   // ---- set up the scene once
   useEffect(() => {
@@ -214,6 +217,7 @@ if (uGrid > 0.0) { vec2 g = abs(fract(vGrainPos.xz / uGrid + 0.5) - 0.5) / fwidt
       const sc = sun.shadow.camera;
       sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.near = 0.1; sc.far = R * 2 + top; sc.updateProjectionMatrix();
       sun.shadow.normalBias = (2 * half / 2048) * 1.5;
+      onDist.current?.(dist, controls.minDistance, controls.maxDistance);
       const k = Math.max(0.03, Math.min(Math.max(1, dims().S0 / 100), dist / 90));
       for (const g of pins.children) g.scale.setScalar(k);
     };
@@ -450,6 +454,7 @@ if (uGrid > 0.0) { vec2 g = abs(fract(vGrainPos.xz / uGrid + 0.5) - 0.5) / fwidt
     }
     // a tall screen (a phone) looks down more steeply so the land fills it
     const tall = (host.current?.clientHeight ?? 0) > (host.current?.clientWidth ?? 1) * 1.1;
+    startView.current = () => { s.camera.position.set(0, F * (tall ? 1.3 : 0.85), F * (tall ? 0.62 : 1.1)); s.controls.target.set(0, 0, 0); s.controls.update(); s.controls.dispatchEvent({ type: 'change' }); };
     s.camera.position.set(0, F * (tall ? 1.3 : 0.85), F * (tall ? 0.62 : 1.1)); s.controls.target.set(0, 0, 0); s.controls.update();
     s.controls.dispatchEvent({ type: 'change' });
     s.follow();
@@ -769,7 +774,28 @@ if (uGrid > 0.0) { vec2 g = abs(fract(vGrainPos.xz / uGrid + 0.5) - 0.5) / fwidt
     S.current!.ring.visible = false; S.current!.render();
   }, [p.tool, p.carryId]);
 
-  return <div className="terrain3d" ref={host} />;
+  // ---- zoom meter (for touchpads without a scroll wheel): moves the camera toward or away from what it looks at
+  const [zoom, setZoom] = useState<{ d: number; min: number; max: number } | null>(null);
+  useEffect(() => {
+    let raf = 0;
+    onDist.current = (d, min, max) => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => setZoom({ d, min, max })); };
+    return () => { cancelAnimationFrame(raf); onDist.current = null; };
+  }, []);
+  const setDist = (d: number) => {
+    const s = S.current; if (!s) return;
+    const dir = s.camera.position.clone().sub(s.controls.target).normalize();
+    s.camera.position.copy(s.controls.target).addScaledVector(dir, d);
+    s.controls.update(); s.controls.dispatchEvent({ type: 'change' });
+  };
+  return (
+    <div className="terrain3d-wrap">
+      <div className="terrain3d" ref={host} />
+      {zoom && zoom.max > zoom.min && (
+        <ZoomMeter className="floating" value={zoom.max / zoom.d} min={1} max={zoom.max / zoom.min}
+          onChange={(z) => setDist(zoom.max / z)} onFit={() => startView.current?.()} fitLabel="Reset" />
+      )}
+    </div>
+  );
 }
 
 /* ---------- shapes of the things you can place (sizes in 3D units; a map cell is 0.63) ---------- */

@@ -2,6 +2,11 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.19.1 — zoom meter
+
+- **Zoom without a scroll wheel**: the 3D map, 2D map, timeline, relationship map and family tree all have a zoom bar with −, a slider and +. The 3D map has Reset, the 2D map shows the zoom percentage, and the timeline and boards have Fit.
+- Scroll-wheel and pinch zoom still work everywhere, and the bar follows along.
+
 ## Changes in v0.19.0 — more themes, cursors, tabs, and people on maps
 
 No database changes.

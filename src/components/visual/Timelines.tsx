@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Layers, Plus, Minus, X, X as XIcon, Trash2, CalendarCog, List, GanttChart, HelpCircle, Pencil, FileText, ExternalLink, CalendarDays, User, MapPin, StickyNote, HeartHandshake, BookOpen, Map as MapIcon, MoreHorizontal, SlidersHorizontal, Filter } from 'lucide-react';
+import { Layers, Plus, X, X as XIcon, Trash2, CalendarCog, List, GanttChart, HelpCircle, Pencil, FileText, ExternalLink, CalendarDays, User, MapPin, StickyNote, HeartHandshake, BookOpen, Map as MapIcon, MoreHorizontal, SlidersHorizontal, Filter } from 'lucide-react';
 import { db, type Entity, type Link, type Scene } from '../../db';
 import { addLink, colorOf, createEntity, deleteEntity, removeLink, updateEntity } from '../../entities';
 import { toastTrashed } from '../TrashView';
@@ -10,7 +10,7 @@ import {
   yearLabel,
 } from '../../story3';
 import { go } from '../../nav';
-import { Modal, confirmDialog, openMenu, promptDialog, toast, uiZoom } from '../ui';
+import { Modal, confirmDialog, openMenu, promptDialog, toast, uiZoom, ZoomMeter } from '../ui';
 import { Avatar, Field, ImageBox, Picker, PopButton, useProjectOptions } from '../story/common';
 import { openEntity } from '../story/links';
 import { birthYearOf, deathYearOf, lifespan, withYear, yearFrom } from '../../charDates';
@@ -348,7 +348,6 @@ function WorldTimeline({ projectId, timeline, data, opts, sel, setSel }: { proje
   const nearestZoom = ZOOMS.reduce((best, z) => (Math.abs(Math.log(px / z.px)) < Math.abs(Math.log(px / best.px)) ? z : best), ZOOMS[0]);
   // zooming keeps what's in the middle of the screen in the middle
   const zoomTo = (np: number | null) => { const c = centerNow(); setPx(np === null ? null : Math.max(MIN_PX, Math.min(MAX_PX, np))); if (np === null) { setWinCenter(null); anchor.current = 'fit'; } else { setWinCenter(c); anchor.current = c; } };
-  const zoomBy = (f: number) => zoomTo(px * f);
   const filterCount = hiddenKinds.size + cats.size + (who ? 1 : 0) + (where ? 1 : 0);
   const clearFilters = () => { setHiddenKinds(new Set()); setCats(new Set()); setWho(''); setWhere(''); };
 
@@ -366,11 +365,7 @@ function WorldTimeline({ projectId, timeline, data, opts, sel, setSel }: { proje
         <button className="icon-btn sm tl-tab-add" title="New timeline" aria-label="New timeline" onClick={newTimeline}><Plus size={14} /></button>
       </div>
       <div className="tl-bar">
-        <div className="zoom-ctl" role="group" aria-label="Zoom">
-          <button className="icon-btn sm" title="Zoom out" aria-label="Zoom out" onClick={() => zoomBy(1 / 2.5)}><Minus size={14} /></button>
-          <button className={'btn ghost sm' + (pxUser === null ? ' on-text' : '')} onClick={() => zoomTo(null)} title="Fit everything in view">Fit</button>
-          <button className="icon-btn sm" title="Zoom in" aria-label="Zoom in" onClick={() => zoomBy(2.5)}><Plus size={14} /></button>
-        </div>
+        <ZoomMeter className="inline" value={px} min={MIN_PX} max={MAX_PX} step={2.5} onChange={(z) => zoomTo(z)} onFit={() => zoomTo(null)} fitOn={pxUser === null} />
         <PopButton icon={<SlidersHorizontal size={13} />} label="View">
           <div className="pop-label">Scale</div>
           <select className="zoom-select" value={nearestZoom.id} onChange={(e) => zoomTo(ZOOMS.find((z) => z.id === e.target.value)!.px)} aria-label="Scale">
