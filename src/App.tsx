@@ -61,11 +61,11 @@ export default function App() {
   // shared projects: invite links, view-only banner, arrivals/removals
   const sync = useSyncStatus();
   const roles = useSharedRoles();
-  // one-off: shrink the owner's word counts that the old "opening a scene counts as writing" bug inflated (after sync has had a moment)
+  // one-off: shrink the owner's word counts inflated by old bugs (opening a scene, pasting) — after sync has had a moment
   const myName = useSocial().me?.username;
   useEffect(() => {
     if (myName !== 'owner') return;
-    const t = window.setTimeout(() => { import('./stats').then((m) => m.repairInflatedActivity()).catch(() => {}); }, 8000);
+    const t = window.setTimeout(() => { import('./stats').then(async (m) => { await m.repairInflatedActivity(); await m.repairPastedActivity(); }).catch(() => {}); }, 8000);
     return () => clearTimeout(t);
   }, [myName]);
   useEffect(() => {

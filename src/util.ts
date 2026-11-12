@@ -4,7 +4,7 @@ export interface TextStats { words: number; chars: number; charsNoSpaces: number
 
 export function textStats(text: string): TextStats {
   const trimmed = text.trim();
-  const words = trimmed ? (trimmed.match(/[\p{L}\p{N}’'-]+/gu) ?? []).length : 0;
+  const words = trimmed ? (trimmed.match(/[\p{L}\p{N}][\p{L}\p{N}’'-]*/gu) ?? []).length : 0;
   const sentences = trimmed ? (trimmed.match(/[^.!?…]+[.!?…]+["'”’)\]]*|[^.!?…]+$/g) ?? []).filter((s) => /[\p{L}\p{N}]/u.test(s)).length : 0;
   return {
     words,

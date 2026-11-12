@@ -50,6 +50,8 @@ interface State {
   land: THREE.Group; chunks: Chunk[]; material: THREE.MeshStandardMaterial; water: THREE.Mesh; skirt: THREE.Mesh; ring: THREE.Mesh; pins: THREE.Group;
   strokes: THREE.Group; journeys: THREE.Group; sun: THREE.DirectionalLight; follow: () => void; ripples: THREE.Texture;
   charLabels: THREE.Group; hemi: THREE.HemisphereLight; setSun: (dir: THREE.Vector3) => void; scaleBar: HTMLDivElement;
+  /** puts a thing carried with Move back if the carry was cancelled */
+  endCarryPreview?: () => void;
   objects: THREE.Group; owners: Map<THREE.InstancedMesh, string[]>; marker: THREE.Mesh; render: () => void; tex?: THREE.Texture; key: string;
   mini: HTMLDivElement; drawMiniBase: () => void; drawMiniMark: () => void; miniT: number;
 }
@@ -258,7 +260,42 @@ if (uGrid > 0.0) { vec2 g = abs(fract(vGrainPos.xz / uGrid + 0.5) - 0.5) / fwidt
     // ---- pointer: sculpt / paint / place pins and things / pick and move things
     const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
     let drawing = false, pending: { x: number; y: number } | null = null, raf = 0;
-    let moving: { id: string; u0: number; v0: number; moved: boolean } | null = null;
+    let moving: { id: string; u0: number; v0: number; moved: boolean; pv: Preview | null; du: number; dv: number } | null = null;
+    // While a thing is dragged, only its own pieces move (no rebuilding the whole map every mouse move);
+    // the new place is saved once, when it's put down.
+    type Preview = { id: string; base: [THREE.InstancedMesh, number, THREE.Matrix4][]; c0: { u: number; v: number }; h0: number; mk: THREE.Vector3; du: number; dv: number };
+    const beginPreview = (id: string): Preview | null => {
+      const o = props.current.objects.find((x) => x.id === id);
+      if (!o || o.pts || o.kind === 'character') return null;
+      const base: Preview['base'] = [];
+      for (const [m, ids] of S.current!.owners) ids.forEach((x, i) => { if (x === id) { const M = new THREE.Matrix4(); m.getMatrixAt(i, M); base.push([m, i, M]); } });
+      if (!base.length) return null;
+      const c0 = centerOf(o);
+      return { id, base, c0, h0: surfaceRef.current(c0.u, c0.v), mk: S.current!.marker.position.clone(), du: 0, dv: 0 };
+    };
+    const fresh = (pv: Preview | null, id: string) => (pv && pv.base.every(([m]) => m.parent === objects) ? pv : beginPreview(id));
+    const showPreview = (pv: Preview, du: number, dv: number) => {
+      const cl = (x: number) => Math.max(0, Math.min(1, x));
+      const u = cl(pv.c0.u + du), v = cl(pv.c0.v + dv);
+      pv.du = u - pv.c0.u; pv.dv = v - pv.c0.v;
+      const { W, D } = dims(); const dy = surfaceRef.current(u, v) - pv.h0;
+      const T = new THREE.Matrix4().makeTranslation(pv.du * W, dy, pv.dv * D);
+      const touched = new Set<THREE.InstancedMesh>();
+      for (const [m, i, B] of pv.base) { m.setMatrixAt(i, T.clone().multiply(B)); touched.add(m); }
+      touched.forEach((m) => { m.instanceMatrix.needsUpdate = true; m.boundingSphere = null; });
+      const mk = S.current!.marker; if (mk.visible) mk.position.set(pv.mk.x + pv.du * W, pv.mk.y + dy, pv.mk.z + pv.dv * D);
+      render();
+    };
+    const undoPreview = (pv: Preview | null) => {
+      if (!pv || !pv.base.every(([m]) => m.parent === objects)) return;
+      const touched = new Set<THREE.InstancedMesh>();
+      for (const [m, i, B] of pv.base) { m.setMatrixAt(i, B); touched.add(m); }
+      touched.forEach((m) => { m.instanceMatrix.needsUpdate = true; m.boundingSphere = null; });
+      S.current!.marker.position.copy(pv.mk); render();
+    };
+    let carryPv: Preview | null = null, carryLive: { u: number; v: number } | null = null;
+    // one update per screen frame, however fast the mouse sends moves
+    let dragEv: PointerEvent | null = null, dragRaf = 0;
     const aim = (e: PointerEvent) => {
       const r = renderer.domElement.getBoundingClientRect();
       ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -311,7 +348,6 @@ if (uGrid > 0.0) { vec2 g = abs(fract(vGrainPos.xz / uGrid + 0.5) - 0.5) / fwidt
     // ---- right-click on a thing opens its menu (a right-drag still orbits)
     // (some systems send the right-click as the button goes down, others as it comes up: decide once it's up and hasn't moved)
     let rdown: { x: number; y: number } | null = null, rightHeld = false, pendingMenu: { id: string; x: number; y: number } | null = null;
-    let carryLast: { u: number; v: number } | null = null;
     const still = (x: number, y: number) => !rdown || Math.hypot(x - rdown.x, y - rdown.y) <= 5;
     const thingAt = (e: MouseEvent) => {
       const ev = e as PointerEvent;
@@ -333,14 +369,20 @@ if (uGrid > 0.0) { vec2 g = abs(fract(vGrainPos.xz / uGrid + 0.5) - 0.5) / fwidt
     const down = (e: PointerEvent) => {
       const tool = props.current.tool;
       if (e.button === 2) { rdown = { x: e.clientX, y: e.clientY }; rightHeld = true; pendingMenu = null; }
-      if (props.current.carryId) { if (e.button === 0) { carryLast = null; props.current.onCarryEnd(); } return; }
+      if (props.current.carryId) {
+        if (e.button === 0) {
+          if (carryPv && (carryPv.du || carryPv.dv)) props.current.onMoveObject(carryPv.id, carryPv.du, carryPv.dv);
+          carryPv = null; carryLive = null; props.current.onCarryEnd();
+        }
+        return;
+      }
       if (e.button !== 0 || tool === 'view') return;
       if (tool === 'select') {
         let id = hitThing(e) ?? nearOnScreen(e);
         if (!id) { const l = hitLand(e); if (l) id = nearStroke(l.point); }
         props.current.onSelectObject(id);
         const h = id ? hitLand(e) : undefined;
-        if (id && h) { const g = toGrid(h.point); moving = { id, u0: g.u, v0: g.v, moved: false }; renderer.domElement.setPointerCapture(e.pointerId); controls.enabled = false; }
+        if (id && h) { const g = toGrid(h.point); moving = { id, u0: g.u, v0: g.v, moved: false, pv: null, du: 0, dv: 0 }; renderer.domElement.setPointerCapture(e.pointerId); controls.enabled = false; }
         return;
       }
       const h = hitLand(e); if (!h) return;
@@ -350,27 +392,40 @@ if (uGrid > 0.0) { vec2 g = abs(fract(vGrainPos.xz / uGrid + 0.5) - 0.5) / fwidt
       drawing = true; renderer.domElement.setPointerCapture(e.pointerId);
       props.current.onStroke(g.x, g.y, true);
     };
+    const dragFrame = () => {
+      dragRaf = 0; const e = dragEv; if (!e) return;
+      const cid = props.current.carryId;
+      const h = hitLand(e); if (!h) return;
+      const g = toGrid(h.point);
+      if (cid) {
+        const o = props.current.objects.find((x) => x.id === cid); if (!o) return;
+        carryPv = fresh(carryPv && carryPv.id === cid ? carryPv : null, cid);
+        if (carryPv) { showPreview(carryPv, g.u - carryPv.c0.u, g.v - carryPv.c0.v); return; }
+        // drawn lines and characters still move the old way
+        const from = carryLive ?? centerOf(o);
+        props.current.onMoveObject(cid, g.u - from.u, g.v - from.v); carryLive = { u: g.u, v: g.v };
+        return;
+      }
+      if (!moving) return;
+      const du = g.u - moving.u0, dv = g.v - moving.v0;
+      if (!moving.moved && Math.abs(du) + Math.abs(dv) < 0.0005) return;
+      moving.moved = true;
+      moving.pv = fresh(moving.pv, moving.id);
+      if (moving.pv) { showPreview(moving.pv, du, dv); return; }
+      props.current.onMoveObject(moving.id, du - moving.du, dv - moving.dv); moving.du = du; moving.dv = dv;
+    };
+    S.current!.endCarryPreview = () => { if (carryPv) undoPreview(carryPv); carryPv = null; carryLive = null; };
     const move = (e: PointerEvent) => {
       const tool = props.current.tool;
       const cid = props.current.carryId;
-      if (cid) {
-        const h = hitLand(e); const o = props.current.objects.find((x) => x.id === cid);
-        if (h && o) {
-          const g = toGrid(h.point); const from = carryLast ?? centerOf(o);
-          props.current.onMoveObject(cid, g.u - from.u, g.v - from.v); carryLast = { u: g.u, v: g.v };
-        }
-        ring.visible = false; render(); return;
-      }
-      carryLast = null;
-      if (moving) {
-        const h = hitLand(e);
-        if (h) {
-          const g = toGrid(h.point);
-          const du = g.u - moving.u0, dv = g.v - moving.v0;
-          if (Math.abs(du) + Math.abs(dv) > 0.0005) { moving.moved = true; props.current.onMoveObject(moving.id, du, dv); moving.u0 = g.u; moving.v0 = g.v; }
-        }
+      if (cid || moving) {
+        dragEv = e;
+        if (!dragRaf) dragRaf = requestAnimationFrame(dragFrame);
+        if (cid) { ring.visible = false; }
         return;
       }
+      if (carryPv) { undoPreview(carryPv); carryPv = null; }
+      carryLive = null;
       const brushTool = tool !== 'view' && tool !== 'pin' && tool !== 'object' && tool !== 'select' && tool !== 'journey';
       const h = brushTool ? hitLand(e) : undefined;
       if (h) {
@@ -389,7 +444,12 @@ if (uGrid > 0.0) { vec2 g = abs(fract(vGrainPos.xz / uGrid + 0.5) - 0.5) / fwidt
         if (pendingMenu && still(e.clientX, e.clientY)) props.current.onThingMenu(pendingMenu.id, pendingMenu.x, pendingMenu.y);
         pendingMenu = null;
       }
-      if (moving) { moving = null; controls.enabled = true; props.current.onStrokeEnd(); }
+      if (moving) {
+        if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; dragFrame(); }
+        const m = moving; moving = null; controls.enabled = true;
+        if (m.pv && m.moved && (m.pv.du || m.pv.dv)) props.current.onMoveObject(m.id, m.pv.du, m.pv.dv);
+        props.current.onStrokeEnd();
+      }
       if (drawing) { drawing = false; props.current.onStrokeEnd(); }
     };
     const leave = () => { ring.visible = false; render(); };
@@ -773,6 +833,7 @@ if (uGrid > 0.0) { vec2 g = abs(fract(vGrainPos.xz / uGrid + 0.5) - 0.5) / fwidt
     S.current!.renderer.domElement.style.cursor = p.carryId ? 'var(--cur-move, move)' : p.tool === 'view' ? 'var(--cur-grab, grab)' : p.tool === 'pin' || p.tool === 'object' || p.tool === 'journey' ? 'var(--cur-cross, crosshair)' : p.tool === 'select' ? 'var(--cur-pointer, pointer)' : 'none';
     S.current!.ring.visible = false; S.current!.render();
   }, [p.tool, p.carryId]);
+  useEffect(() => { if (!p.carryId) S.current?.endCarryPreview?.(); }, [p.carryId]);
 
   // ---- zoom meter (for touchpads without a scroll wheel): moves the camera toward or away from what it looks at
   const [zoom, setZoom] = useState<{ d: number; min: number; max: number } | null>(null);

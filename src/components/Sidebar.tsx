@@ -1,6 +1,6 @@
 import { usePhone } from '../phone';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Home, BookOpen, Star, Settings as Cog, HelpCircle, PanelLeftClose, PanelLeftOpen, Plus, ChevronRight,
   FileText, Pencil, Copy, Trash2, Search, LayoutGrid, MessagesSquare, Shield, Columns2, FolderOpen, Users, Contact, BookA, AlignLeft, Globe, StickyNote, Network, HeartHandshake, GanttChart, BarChart3, Map as MapIcon, Pin, PinOff, ListChecks, Clock,
@@ -14,6 +14,7 @@ import { useOpenTasks } from './story/Tasks';
 import { Avatar } from './story/common';
 import { openEntity } from './story/links';
 import { type Entity, db, createChapter, createScene, duplicateChapter, reorderChapters, moveScene, type Chapter, type Scene } from '../db';
+import { useSceneMetas, useSceneMetasByIds } from '../sceneMeta';
 import { deleteChapter, deleteScene } from '../trash';
 import { toastTrashed } from './TrashView';
 import { DescPeek, editDescription } from './DescPop';
@@ -187,12 +188,13 @@ function PinnedItems({ projectId }: { projectId: string }) {
   const s = useSettings();
   const { route } = useNav();
   const pins = s.pins.filter((p) => p.projectId === projectId);
-  const data = useLiveQuery(async () => ({
-    scenes: await db.scenes.bulkGet(pins.filter((p) => p.kind === 'scene').map((p) => p.id)),
-    allScenes: await db.scenes.where('projectId').equals(projectId).toArray(),
+  const pinScenes = useSceneMetasByIds(pins.filter((p) => p.kind === 'scene').map((p) => p.id));
+  const allScenes = useSceneMetas(projectId);
+  const rest = useLiveQuery(async () => ({
     ents: await db.entities.bulkGet(pins.filter((p) => p.kind === 'entity').map((p) => p.id)),
     chapters: await db.chapters.where('projectId').equals(projectId).toArray(),
   }), [pins.map((p) => p.id).join()]);
+  const data = rest && pinScenes && allScenes ? { ...rest, scenes: pinScenes, allScenes } : undefined;
   if (!pins.length || !data) return null;
   const items = pins.map((p) => p.kind === 'scene' ? { p, s: data.scenes.find((x) => x?.id === p.id) } : p.kind === 'chapter' ? { p, c: data.chapters.find((x) => x.id === p.id) } : { p, e: data.ents.find((x) => x?.id === p.id) })
     .filter((x) => ('s' in x ? x.s : 'c' in x ? x.c : x.e));
@@ -237,7 +239,9 @@ function RecentCharacters({ projectId }: { projectId: string }) {
 
 function RecentScenes() {
   const { route } = useNav();
-  const recent = useLiveQuery(async () => (await db.scenes.bulkGet(getRecentScenes().slice(0, 5))).filter(Boolean) as Scene[], [route]);
+  const recentIds = getRecentScenes().slice(0, 5); void route; // the list changes as you move around
+  const recentAll = useSceneMetasByIds(recentIds);
+  const recent = useMemo(() => recentAll?.filter(Boolean) as Scene[] | undefined, [recentAll]);
   const chapters = useLiveQuery(() => db.chapters.bulkGet((recent ?? []).map((s) => s.chapterId)), [recent]);
   const [collapsed, toggle] = useCollapsed();
   if (!recent?.length) return null;
@@ -277,7 +281,7 @@ type Drag = { type: 'chapter' | 'scene'; id: string } | null;
 function Manuscript({ projectId }: { projectId: string }) {
   const { route } = useNav();
   const chapters = useLiveQuery(() => db.chapters.where('[projectId+order]').between([projectId, -Infinity], [projectId, Infinity]).toArray(), [projectId]);
-  const scenes = useLiveQuery(() => db.scenes.where('projectId').equals(projectId).toArray(), [projectId]);
+  const scenes = useSceneMetas(projectId);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [drag, setDrag] = useState<Drag>(null);
   const [over, setOver] = useState<string | null>(null);

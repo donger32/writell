@@ -89,7 +89,7 @@ export async function importManuscript(): Promise<string | null> {
         const content = isTxt
           ? { type: 'doc', content: body.split(/\n\s*\n/).map((p) => ({ type: 'paragraph', content: p.trim() ? [{ type: 'text', text: p.replace(/\n/g, ' ') }] : undefined })) }
           : markdownToJson(body);
-        const words = (jsonToText(content).match(/[\p{L}\p{N}’'-]+/gu) ?? []).length;
+        const words = (jsonToText(content).match(/[\p{L}\p{N}][\p{L}\p{N}’'-]*/gu) ?? []).length;
         await db.scenes.add({ id: uid(), projectId: pid, chapterId: chId, title: `Scene ${j + 1}`, summary: '', notes: '', order: j, status: 'draft', content, words, createdAt: t, updatedAt: t });
       }
     }

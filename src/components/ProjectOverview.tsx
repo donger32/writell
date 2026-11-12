@@ -4,6 +4,7 @@ import { Plus, Download, FileText, Star, MoreHorizontal, History, Settings2, Pen
 import { sharedRole, useSharedRoles } from '../sync/engine';
 import { TimelineBox } from './visual/TimelineBox';
 import { db, createChapter, autoBackup, importProject, type Status } from '../db';
+import { useSceneMetas } from '../sceneMeta';
 import { go, setNav, getRecentScenes } from '../nav';
 import { fmtNum, fmtReading, timeAgo } from '../util';
 import { Modal, STATUS_COLOR, STATUS_LABEL, confirmDialog, openMenu, promptDialog, toast } from './ui';
@@ -18,7 +19,7 @@ export function ProjectOverview({ projectId }: { projectId: string }) {
   useSharedRoles(); // re-render when sharing changes
   const p = useLiveQuery(() => db.projects.get(projectId), [projectId]);
   const chapters = useLiveQuery(() => db.chapters.where('projectId').equals(projectId).sortBy('order'), [projectId]);
-  const scenes = useLiveQuery(() => db.scenes.where('projectId').equals(projectId).toArray(), [projectId]);
+  const scenes = useSceneMetas(projectId);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [settings, setSettingsOpen] = useState(false);
   const [tlFor, setTlFor] = useState<string | null>(null);

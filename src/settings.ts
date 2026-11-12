@@ -76,6 +76,8 @@ export interface Settings {
   lineHeight: number;
   editorWidth: number;        // px max width of text column
   paragraphSpacing: number;   // em
+  /** 'spaced': a gap between paragraphs; 'book': indented first lines, no gaps (like a printed novel) */
+  paraStyle?: 'spaced' | 'book';
   typewriter: boolean;
   focusMode: boolean;
   spellcheck: boolean;
@@ -130,7 +132,7 @@ export const FONTS = [
 const DEFAULTS: Settings = {
   theme: THEMES[0],
   customThemes: [],
-  editorTheme: EDITOR_THEMES[1],
+  editorTheme: EDITOR_THEMES[0], // the page matches the app's colours (a light app no longer gets a dark page)
   customEditorThemes: [],
   uiScale: 1,
   sidebarWidth: 260,
@@ -185,7 +187,9 @@ function load(): Settings {
         saved.sidebarV7 = true;
         if (Array.isArray(saved.sidebarTools)) saved.sidebarTools = saved.sidebarTools.map((t: { id: string; visible: boolean }) => (t.id === 'statistics' || t.id === 'search' ? { ...t, visible: false } : t));
       }
-      return { ...DEFAULTS, ...saved };
+      const merged = { ...DEFAULTS, ...saved };
+      if (!merged.theme || typeof merged.theme !== 'object' || !merged.theme.bg) merged.theme = DEFAULTS.theme; // a damaged saved theme falls back to the default
+      return merged;
     }
   } catch { /* storage unavailable */ }
   return DEFAULTS;
@@ -230,6 +234,7 @@ export function applySettingsToDOM(s: Settings) {
   r.setProperty('--ed-margin', (s.editorMargin ?? 0) + 'px');
   applyCursor(s.mouseCursor ?? 'system', s.cursorSize ?? 21, t.accent);
   r.setProperty('--ed-para', s.paragraphSpacing + 'em');
+  document.documentElement.dataset.para = s.paraStyle ?? 'spaced';
   r.setProperty('--sidebar-w', s.sidebarWidth + 'px');
   r.setProperty('zoom', String(s.uiScale));
   r.setProperty('--ui-scale', String(s.uiScale));

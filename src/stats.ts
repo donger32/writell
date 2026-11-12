@@ -101,3 +101,28 @@ export async function repairInflatedActivity() {
   if (fixed.length) await db.activity.bulkPut(fixed);
   try { localStorage.setItem(FLAG, String(Date.now())); } catch { /* */ }
 }
+
+/**
+ * Second one-off cleanup (owner's account only): before 0.19.4 pasted text counted as written, so a huge paste
+ * made a day claim far more words than the project holds. The excess comes off the biggest days first
+ * (the paste day), so ordinary days stay as they were; days you wrote on keep at least 1 word.
+ */
+export async function repairPastedActivity() {
+  const FLAG = 'writell.statsRepair.v2';
+  try { if (localStorage.getItem(FLAG)) return; } catch { return; }
+  const rows = await db.activity.toArray();
+  const byProject = new Map<string, DayActivity[]>();
+  for (const r of rows) byProject.set(r.projectId, [...(byProject.get(r.projectId) ?? []), r]);
+  const fixed: DayActivity[] = []; const t = Date.now();
+  for (const [pid, list] of byProject) {
+    let excess = list.reduce((a, r) => a + r.wordsAdded, 0) - await projectWords(pid);
+    if (excess <= 0) continue;
+    for (const r of [...list].filter((x) => x.wordsAdded > 1).sort((a, b) => b.wordsAdded - a.wordsAdded)) {
+      if (excess <= 0) break;
+      const cut = Math.min(excess, r.wordsAdded - 1);
+      excess -= cut; fixed.push({ ...r, wordsAdded: r.wordsAdded - cut, updatedAt: t });
+    }
+  }
+  if (fixed.length) await db.activity.bulkPut(fixed);
+  try { localStorage.setItem(FLAG, String(Date.now())); } catch { /* */ }
+}

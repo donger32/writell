@@ -156,7 +156,12 @@ export function SettingsModal() {
             </label>
             <Slider label="Font size" value={s.editorFontSize} min={13} max={28} step={1} onChange={(v) => setSettings({ editorFontSize: v })} fmt={(v) => v + 'px'} />
             <Slider label="Line height" value={s.lineHeight} min={1.3} max={2.4} step={0.05} onChange={(v) => setSettings({ lineHeight: v })} fmt={(v) => v.toFixed(2)} />
-            <Slider label="Paragraph spacing" value={s.paragraphSpacing} min={0} max={2} step={0.1} onChange={(v) => setSettings({ paragraphSpacing: v })} fmt={(v) => v.toFixed(1) + 'em'} />
+            <div className="field"><span>Paragraphs</span>
+              <div className="seg" role="radiogroup" aria-label="Paragraph style" style={{ alignSelf: 'flex-start', width: 'fit-content' }}>
+                {([['spaced', 'Space between'], ['book', 'Book style (indented)']] as const).map(([v, l]) => <button key={v} role="radio" aria-checked={(s.paraStyle ?? 'spaced') === v} className={(s.paraStyle ?? 'spaced') === v ? 'on' : ''} onClick={() => setSettings({ paraStyle: v })}>{l}</button>)}
+              </div>
+            </div>
+            {(s.paraStyle ?? 'spaced') === 'spaced' && <Slider label="Paragraph spacing" value={s.paragraphSpacing} min={0} max={2} step={0.1} onChange={(v) => setSettings({ paragraphSpacing: v })} fmt={(v) => v.toFixed(1) + 'em'} />}
             <h3>Writing width</h3>
             <div className="seg">
               {[['Narrow', 560], ['Medium', 720], ['Wide', 920], ['Full', 1600]].map(([l, w]) => <button key={l} className={s.editorWidth === w ? 'on' : ''} onClick={() => setSettings({ editorWidth: w as number })}>{l}</button>)}

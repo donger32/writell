@@ -910,7 +910,7 @@ textarea.reltext-body { resize: none; border: 0; outline: none; background: tran
   .pane-head .crumbs .muted { display: none; }
   .pane-head > .row { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; max-width: 62vw; }
   .pane-head > .row::-webkit-scrollbar { display: none; }
-  .toolbar { flex-wrap: nowrap; overflow-x: auto; padding: 4px 6px; scrollbar-width: none; }
+  .toolbar { flex-wrap: nowrap; overflow-x: auto; padding: 4px 6px; scrollbar-width: none; justify-content: flex-start; }
   .toolbar::-webkit-scrollbar { display: none; }
   .tb-sep { flex: none; }
   .editor-scroll { padding: 18px 16px 40vh; }
@@ -1464,3 +1464,14 @@ html[data-cursor] .react-flow__resize-control.top, html[data-cursor] .react-flow
 html[data-cursor] .react-flow__resize-control.top.left, html[data-cursor] .react-flow__resize-control.bottom.right { cursor: var(--cur-nwse); }
 html[data-cursor] .react-flow__resize-control.bottom.left, html[data-cursor] .react-flow__resize-control.top.right { cursor: var(--cur-nesw); }
 html[data-cursor] :is(input, textarea, [contenteditable=true]):disabled { cursor: var(--cur-default); }
+/* very long scenes: paragraphs off screen aren't laid out until you scroll to them (keeps typing fast) */
+.prose.long-doc > :is(p, h1, h2, h3, blockquote, ul, ol, hr) { content-visibility: auto; contain-intrinsic-size: auto 3.2em; }
+/* book-style paragraphs: first lines indented, no gaps (headings, quotes and scene breaks still get room) */
+[data-para="book"] .prose p { margin: 0; }
+[data-para="book"] .prose p + p { text-indent: 1.6em; }
+[data-para="book"] .prose :is(blockquote, ul, ol, h1, h2, h3, hr) + p { margin-top: .9em; }
+[data-para="book"] .prose p + :is(blockquote, ul, ol, hr) { margin-top: .9em; }
+/* the formatting buttons sit over the text, not at the window's edge */
+.toolbar { justify-content: center; }
+/* like a printed book: the first paragraph after a heading, quote, list or scene break starts flush left */
+[data-para="book"] .prose :is(h1, h2, h3, blockquote, ul, ol, hr) + p, [data-para="book"] .prose :is(h1, h2, h3, hr) + p:has(> br:only-child) + p { text-indent: 0; }

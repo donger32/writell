@@ -333,9 +333,12 @@ export async function saveSceneContent(sceneId: string, content: unknown, words:
     const last = lastSnapshotAt.get(sceneId) ?? 0;
     if (t - last > SNAPSHOT_EVERY) {
       lastSnapshotAt.set(sceneId, t);
-      await db.snapshots.add({ id: uid(), projectId: scene.projectId, sceneId, content, words, reason: 'auto', createdAt: t });
-      const autos = (await db.snapshots.where('sceneId').equals(sceneId).sortBy('createdAt')).filter((s) => s.reason === 'auto');
-      if (autos.length > MAX_AUTO_SNAPSHOTS) await db.snapshots.bulkDelete(autos.slice(0, autos.length - MAX_AUTO_SNAPSHOTS).map((s) => s.id));
+      // automatic copies have ids starting with "auto:", so old ones can be found without reading their text
+      // (reading 50 copies of a very long scene back used to freeze typing for seconds)
+      await db.snapshots.add({ id: 'auto:' + uid(), projectId: scene.projectId, sceneId, content, words, reason: 'auto', createdAt: t });
+      const keys = await db.snapshots.where('[sceneId+createdAt]').between([sceneId, -Infinity], [sceneId, Infinity]).primaryKeys();
+      const autos = keys.map(String).filter((k) => k.startsWith('auto:'));
+      if (autos.length > MAX_AUTO_SNAPSHOTS) await db.snapshots.bulkDelete(autos.slice(0, autos.length - MAX_AUTO_SNAPSHOTS));
     }
   });
 }

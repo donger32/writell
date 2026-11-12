@@ -61,6 +61,7 @@ export function NotesView({ projectId, entityId, filter: initial }: { projectId:
   };
   const active = items.find((n) => n.id === entityId);
   return (
+    <>
     <EntityShell title="Notes" items={shown} activeId={entityId} showAvatar={false} onOpen={(id) => go({ view: 'notes', projectId, entityId: id })}
       onNew={create} newLabel="Note"
       renderSub={(n) => [n.fields.inbox ? 'Inbox' : String(n.fields.type ?? '') + (n.fields.type === 'Plot thread' ? (n.fields.resolved ? ' (resolved)' : ' (open)') : ''), String(n.fields.body ?? '').slice(0, 80)].filter(Boolean).join(' · ')}
@@ -75,10 +76,11 @@ export function NotesView({ projectId, entityId, filter: initial }: { projectId:
         </div>
       }
       empty={<><h3>Notes & ideas</h3><p className="muted">Press <kbd>Ctrl + Shift + N</kbd> anywhere to jot an idea into the inbox without deciding where it belongs.</p><button className="btn primary" onClick={create}><Plus size={14} /> New note</button></>}>
-      {active && <NoteEditor key={active.id} n={active} opts={opts} folders={folders} types={types} all={items} tagList={tagList} onManage={() => setManaging(true)} />}
-      {managing && <ManageTags projectId={projectId} notes={items} tags={tagList} saved={project?.noteTags ?? []} onClose={() => setManaging(false)}
-        onRenamed={(a, b) => { if (filter === 'tag:' + a) setFilter(b ? 'tag:' + b : 'All'); }} />}
+      {active ? <NoteEditor key={active.id} n={active} opts={opts} folders={folders} types={types} all={items} tagList={tagList} onManage={() => setManaging(true)} /> : undefined}
     </EntityShell>
+    {managing && <ManageTags projectId={projectId} notes={items} tags={tagList} saved={project?.noteTags ?? []} onClose={() => setManaging(false)}
+      onRenamed={(a, b) => { if (filter === 'tag:' + a) setFilter(b ? 'tag:' + b : 'All'); }} />}
+    </>
   );
 }
 

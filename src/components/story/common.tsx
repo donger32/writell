@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { X, Plus, ImagePlus, Search, Settings2 } from 'lucide-react';
 import { db, type Entity } from '../../db';
+import { useSceneMetas } from '../../sceneMeta';
 import { registerFlush } from '../../saveRegistry';
 import { NAME_COLORS, autoColor, initials, pickImage, PLACE_CATEGORIES } from '../../entities';
 
@@ -196,11 +197,13 @@ export function Picker({ options, onPick, onCreate, placeholder = 'Search…', b
 
 /** Options for everything linkable inside a project */
 export function useProjectOptions(projectId: string) {
+  const metas = useSceneMetas(projectId);
   return useLiveQuery(async () => {
-    const [entities, chapters, scenes] = await Promise.all([
+    if (!metas) return undefined;
+    const scenes = metas.slice();
+    const [entities, chapters] = await Promise.all([
       db.entities.where('projectId').equals(projectId).toArray(),
       db.chapters.where('projectId').equals(projectId).sortBy('order'),
-      db.scenes.where('projectId').equals(projectId).toArray(),
     ]);
     const chMap = new Map(chapters.map((c, i) => [c.id, { c, i }]));
     const sceneOpts: PickOption[] = scenes
@@ -218,7 +221,7 @@ export function useProjectOptions(projectId: string) {
       noteOpts: ent('note').map((e): PickOption => ({ id: e.id, label: e.name, group: 'Notes' })),
       allTags: [...new Set(entities.flatMap((e) => e.tags))].sort(),
     };
-  }, [projectId]);
+  }, [projectId, metas]);
 }
 
 export const isPlace = (e: Entity) => PLACE_CATEGORIES.has(String(e.fields.category ?? ''));

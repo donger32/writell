@@ -2,13 +2,14 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import { X, Columns2, Pin, PinOff, ArrowRightToLine, ListX, PanelLeft } from 'lucide-react';
 import { db } from '../db';
+import { useSceneMetasByIds } from '../sceneMeta';
 import { closeTab, go, setNav, useNav, getNav } from '../nav';
 import { openMenu } from './ui';
 
 /** Open scenes of the current project, like browser tabs (pinned ones stay small at the front) */
 export function TabBar({ projectId }: { projectId: string }) {
   const { route, tabs, pinnedTabs } = useNav();
-  const scenes = useLiveQuery(() => db.scenes.bulkGet(tabs), [tabs.join()]);
+  const scenes = useSceneMetasByIds(tabs);
   const chapters = useLiveQuery(() => db.chapters.where('projectId').equals(projectId).toArray(), [projectId]);
   const [drag, setDrag] = useState<string | null>(null);
   const [dropAt, setDropAt] = useState<{ id: string; after: boolean } | null>(null);

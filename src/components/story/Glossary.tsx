@@ -26,9 +26,13 @@ export function GlossaryView({ projectId, entityId }: { projectId: string; entit
     const list = (terms ?? [])
       .filter((e) => !t || [e.name, e.fields.aliases, e.fields.definition, e.fields.category].some((v) => String(v ?? '').toLowerCase().includes(t)))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }));
+    // numbers get their own group at the top, in counting order (2 before 10, 1.5 before 2); other symbols go under # at the end
     const g = new Map<string, typeof list>();
-    for (const e of list) { const L = (e.name.trim()[0] ?? '#').toUpperCase(); const k = /\p{L}/u.test(L) ? L : '#'; g.set(k, [...(g.get(k) ?? []), e]); }
-    return [...g.entries()];
+    for (const e of list) { const L = (e.name.trim()[0] ?? '#').toUpperCase(); const k = /\p{N}/u.test(L) ? '0–9' : /\p{L}/u.test(L) ? L : '#'; g.set(k, [...(g.get(k) ?? []), e]); }
+    const lead = (n: string) => parseFloat(n.trim().match(/^\d+(?:[.,]\d+)?/)?.[0].replace(',', '.') ?? 'NaN');
+    g.get('0–9')?.sort((a, b) => (lead(a.name) - lead(b.name)) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }));
+    const rank = (k: string) => (k === '0–9' ? 0 : k === '#' ? 2 : 1);
+    return [...g.entries()].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b));
   }, [terms, q]);
   if (!terms) return null;
   const add = async () => {

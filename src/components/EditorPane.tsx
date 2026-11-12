@@ -40,6 +40,9 @@ import { FindReplace } from './FindReplace';
 import { HistoryPanel } from './HistoryPanel';
 import { SceneStoryLinks } from './story/links';
 import { mentionNames, mentionsKey, termNames, type MentionName } from '../editor/mentions';
+import { wordDelta } from '../editor/wordDelta';
+import { Selection } from '@tiptap/pm/state';
+import { useSceneMeta } from '../sceneMeta';
 import { CharacterHoverCard, useMentionHover } from './CharacterCard';
 
 type SaveState = 'saved' | 'saving' | 'unsaved' | 'error';
@@ -74,7 +77,7 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
   const [liveStatus, setLiveStatus] = useState<LiveStatus | null>(null);
   const s = useSettings();
   const nav = useNav();
-  const live = useLiveQuery(() => db.scenes.get(scene.id), [scene.id]);
+  const live = useSceneMeta(scene.id);
   const chapter = useLiveQuery(() => db.chapters.get(scene.chapterId), [scene.chapterId]);
   const [save, setSave] = useState<SaveState>('saved');
   const [raw, setRaw] = useState<string | null>(null);
@@ -92,6 +95,9 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
   const startWords = useRef<number | null>(null);
   // words typed this session / since the last save; deleting and undo never count
   const lastWords = useRef(0); const typedSession = useRef(0); const typedUnsaved = useRef(0);
+  const created = useRef(false); const statsTimer = useRef(0);
+  const isLong = stats.words > 20000;
+  useEffect(() => () => window.clearTimeout(statsTimer.current), []);
   const timer = useRef<number | undefined>(undefined);
   const pending = useRef<null | (() => Promise<void>)>(null);
   const focusRef = useRef(s.focusMode);
@@ -122,20 +128,29 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
       ] : undefined),
     content: co ? undefined : (scene.content as object),
     editorProps: { attributes: { spellcheck: String(s.spellcheck), class: 'prose', role: 'textbox', 'aria-multiline': 'true', 'aria-label': `Text of ${scene.title}` } },
-    onCreate: ({ editor }) => { const st = textStats(editor.getText({ blockSeparator: '\n\n' })); setStats(st); startWords.current = st.words; lastWords.current = st.words; },
+    onCreate: ({ editor }) => { const st = textStats(editor.getText({ blockSeparator: '\n\n' })); setStats(st); startWords.current = st.words; lastWords.current = st.words; created.current = true; },
     onUpdate: ({ editor, transaction }) => {
-      const st = textStats(editor.getText({ blockSeparator: '\n\n' }));
-      setStats(st);
-      // only real edits count: opening a scene also fires an update (before onCreate), which used to add the whole scene again
-      const grew = transaction.docChanged ? st.words - lastWords.current : 0;
-      lastWords.current = st.words;
+      // count only the paragraphs this edit touched; the full count (sentences, characters…) waits for a pause
+      const grew = transaction.docChanged && created.current ? wordDelta(transaction) : 0;
+      const words = Math.max(0, lastWords.current + grew);
+      lastWords.current = words;
+      setStats((old) => ({ ...old, words, readingMinutes: words / 238 }));
+      window.clearTimeout(statsTimer.current);
+      statsTimer.current = window.setTimeout(() => {
+        if (editor.isDestroyed) return;
+        const full = textStats(editor.getText({ blockSeparator: '\n\n' }));
+        lastWords.current = full.words; setStats(full);
+      }, words > 20000 ? 900 : 120);
       const fromCoWriter = !!transaction.getMeta(ySyncPluginKey)?.isChangeOrigin;
-      if (grew > 0 && !transaction.getMeta('history$') && !fromCoWriter) { typedSession.current += grew; typedUnsaved.current += grew; }
+      // pasted or dropped-in text isn't writing, so it doesn't count toward today's words (undo/redo doesn't either)
+      const ui = transaction.getMeta('uiEvent');
+      const pasted = ui === 'paste' || ui === 'drop';
+      if (grew > 0 && !pasted && !transaction.getMeta('history$') && !fromCoWriter) { typedSession.current += grew; typedUnsaved.current += grew; }
       if (co && grew && !fromCoWriter && transaction.docChanged) noteEdit(scene.projectId, scene.id, titleRef.current, grew);
       setSave('unsaved');
       pending.current = async () => {
         setSave('saving');
-        try { const typed = typedUnsaved.current; typedUnsaved.current = 0; await saveSceneContent(scene.id, editor.getJSON(), st.words, typed, co ? encodeDoc(co.doc) : undefined); setSave('saved'); }
+        try { const typed = typedUnsaved.current; typedUnsaved.current = 0; await saveSceneContent(scene.id, editor.getJSON(), lastWords.current, typed, co ? encodeDoc(co.doc) : undefined); setSave('saved'); }
         catch (err) { console.error(err); setSave('error'); toast('Could not save! Your text is still in the editor — try exporting a backup.'); }
       };
       window.clearTimeout(timer.current);
@@ -147,6 +162,8 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
       if (focusRef.current) editor.view.dispatch(editor.state.tr.setMeta('focusRefresh', true));
     },
   });
+
+  useEffect(() => { if (editor && !editor.isDestroyed) editor.view.dom.classList.toggle('long-doc', isLong); }, [editor, isLong]);
 
   // live co-writing: join the scene's channel, show who's here
   useEffect(() => {
@@ -349,7 +366,16 @@ function PaneInner({ scene: scene0, collab, secondary, onClose }: { scene: Scene
       {findOpen && editor && raw === null && <FindReplace key={findTerm ?? ''} initialTerm={findTerm} editor={editor} mode={findOpen} onClose={() => { setFindOpen(false); setFindTerm(undefined); editor.commands.focus(); }} />}
 
       <div className="pane-body">
-        <div className={'editor-scroll' + (s.typewriter ? ' typewriter' : '') + (s.focusMode ? ' focus-mode' : '') + (reading ? ' reading' : '') + (editing && !reading ? ' editing' : '')}>
+        <div className={'editor-scroll' + (s.typewriter ? ' typewriter' : '') + (s.focusMode ? ' focus-mode' : '') + (reading ? ' reading' : '') + (editing && !reading ? ' editing' : '')}
+          onMouseDown={(e) => {
+            // clicking the empty page below (or beside) the text puts the cursor at the end, like a real page
+            if (!editor || editor.isDestroyed || reading || raw !== null || e.button !== 0) return;
+            const t = e.target as HTMLElement;
+            if (t !== e.currentTarget && !t.classList.contains('editor-column')) return;
+            const last = editor.view.dom.getBoundingClientRect();
+            if (e.clientY < last.bottom - 4) return;
+            e.preventDefault(); editor.view.dispatch(editor.state.tr.setSelection(Selection.atEnd(editor.state.doc)).scrollIntoView()); editor.view.focus();
+          }}>
           {raw !== null ? (
             <textarea className="raw" value={raw} onChange={(e) => setRaw(e.target.value)} spellCheck={s.spellcheck} autoFocus />
           ) : (

@@ -198,7 +198,7 @@ export async function importDocx(): Promise<string | null> {
       const scenesHtml = chunks[i].html.split(/<p>\s*(?:\*\s*\*\s*\*|\*\*\*|#|~|\*)\s*<\/p>/);
       for (let j = 0; j < scenesHtml.length; j++) {
         const content = htmlToJson(scenesHtml[j] || '<p></p>');
-        const words = (jsonToText(content).match(/[\p{L}\p{N}’'-]+/gu) ?? []).length;
+        const words = (jsonToText(content).match(/[\p{L}\p{N}][\p{L}\p{N}’'-]*/gu) ?? []).length;
         await db.scenes.add({ id: uid(), projectId: pid, chapterId: chId, title: `Scene ${j + 1}`, summary: '', notes: '', order: j, status: 'draft', content, words, createdAt: t, updatedAt: t });
       }
     }
