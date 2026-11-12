@@ -2,6 +2,10 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.19.3 — custom pointer everywhere
+
+- Your chosen mouse pointer no longer switches back to the system one over drag handles, map tools, timeline cards, the relationship map, the family tree, resize edges or image previews. Each pointer style now has its own drag hand, crosshair, move, resize and zoom shapes.
+
 ## Changes in v0.19.2 — worldbuilding layouts and note tags
 
 - **Worldbuilding layouts**: entries get the same Layout menu as characters (Full page, Essentials, Just the basics, Blank, or the project default), plus Add field, your own fields, and remove buttons on each field. Each type has more fields to choose from, e.g. places now have climate, rulers, trade, dangers and secrets.

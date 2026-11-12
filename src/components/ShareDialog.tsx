@@ -64,7 +64,7 @@ export function ShareDialog({ projectId, onClose }: { projectId: string; onClose
           <ul className="people share-people">
             {members.map((m) => (
               <li key={m.user_id} className="person">
-                <span className="person-main" style={{ cursor: 'default' }}>
+                <span className="person-main" style={{ cursor: 'var(--cur-default, default)' }}>
                   <Avatar name={name(m)} image={m.profile?.avatar ?? undefined} size={34} />
                   <span className="col" style={{ minWidth: 0 }}>
                     <strong className="ellipsis"><UserName p={m.profile} fallback={name(m)} title={false} />{m.user_id === currentUserId() ? ' (you)' : ''}</strong>

@@ -676,7 +676,7 @@ function StoryTimeline({ projectId, data, opts, setSel }: { projectId: string; d
             <text x={20} y={12} fill="var(--muted)" fontSize={10}>later</text><text x={20} y={H - 16} fill="var(--muted)" fontSize={10}>earlier</text>
             <polyline fill="none" stroke="var(--accent)" strokeWidth={1.6} points={dated.map((p) => `${px(p.i)},${py(p.v)}`).join(' ')} />
             {dated.map((p) => (
-              <g key={p.s.id} onClick={() => go({ view: 'write', projectId, sceneId: p.s.id })} style={{ cursor: 'pointer' }}>
+              <g key={p.s.id} onClick={() => go({ view: 'write', projectId, sceneId: p.s.id })} style={{ cursor: 'var(--cur-pointer, pointer)' }}>
                 <circle cx={px(p.i)} cy={py(p.v)} r={p.s.timeMarker ? 6 : 4} fill={p.s.timeMarker === 'flashback' ? '#e8925a' : p.s.timeMarker ? '#5fa8f5' : 'var(--accent)'} stroke="var(--bg)" strokeWidth={1.5} />
                 <title>{`${opts.chapters.find((c) => c.id === p.s.chapterId)?.title} · ${p.s.title}`}</title>
               </g>

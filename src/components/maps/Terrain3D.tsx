@@ -770,7 +770,7 @@ if (uGrid > 0.0) { vec2 g = abs(fract(vGrainPos.xz / uGrid + 0.5) - 0.5) / fwidt
   useEffect(() => {
     const c = S.current!.controls;
     c.mouseButtons = { LEFT: p.tool === 'view' ? THREE.MOUSE.ROTATE : (-1 as unknown as THREE.MOUSE), MIDDLE: THREE.MOUSE.DOLLY, RIGHT: p.tool === 'view' ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE };
-    S.current!.renderer.domElement.style.cursor = p.carryId ? 'move' : p.tool === 'view' ? 'grab' : p.tool === 'pin' || p.tool === 'object' || p.tool === 'journey' ? 'crosshair' : p.tool === 'select' ? 'pointer' : 'none';
+    S.current!.renderer.domElement.style.cursor = p.carryId ? 'var(--cur-move, move)' : p.tool === 'view' ? 'var(--cur-grab, grab)' : p.tool === 'pin' || p.tool === 'object' || p.tool === 'journey' ? 'var(--cur-cross, crosshair)' : p.tool === 'select' ? 'var(--cur-pointer, pointer)' : 'none';
     S.current!.ring.visible = false; S.current!.render();
   }, [p.tool, p.carryId]);
 

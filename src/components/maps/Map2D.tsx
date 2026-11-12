@@ -162,7 +162,7 @@ export function Map2D(p: Map2DProps) {
           if (m && still(e.clientX, e.clientY)) p.onThingMenu(m.id, m.x, m.y);
         } if (drag.current?.mode === 'draw' || drag.current?.mode === 'obj') p.onStrokeEnd(); drag.current = null; }}
       onPointerLeave={() => setCursor(null)}
-      style={{ cursor: p.carryId ? 'move' : p.tool === 'view' ? 'grab' : p.tool === 'pin' || p.tool === 'object' || p.tool === 'journey' ? 'crosshair' : p.tool === 'select' ? 'pointer' : 'none' }}>
+      style={{ cursor: p.carryId ? 'var(--cur-move, move)' : p.tool === 'view' ? 'var(--cur-grab, grab)' : p.tool === 'pin' || p.tool === 'object' || p.tool === 'journey' ? 'var(--cur-cross, crosshair)' : p.tool === 'select' ? 'var(--cur-pointer, pointer)' : 'none' }}>
       <div className="map2d-stage" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
         <div className={'map2d-board' + (p.look && !p.look.labels ? ' hide-names' : '')} ref={board} style={{ aspectRatio: String(p.aspect), ['--a' as string]: String(p.aspect) }}>
           <canvas ref={canvas} width={RES} height={H} />

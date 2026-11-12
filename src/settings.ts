@@ -291,14 +291,38 @@ function cursorSet(kind: Exclude<CursorKind, 'system'>, px: number, accent: stri
     dart = solid(DART, fill, edge); beam = beamOf(fill, edge);
   }
   const arrow = svg(dart, px);
-  return { arrow: `${arrow} ${hot}, default`, beam: `${svg(beam, px)} ${hs(16, 16)}, text`, hand: `${arrow} ${hot}, pointer` };
+  // the other shapes (drag hand, crosshair, arrows…) in the same colours, so the pointer never falls back to the system one
+  const [fill, edge] = kind === 'black' ? ['#0d0d0f', '#ffffff'] : kind === 'accent' || kind === 'glow' || kind === 'pencil' ? [accent, '#ffffff'] : ['#ffffff', '#0d0d0f'];
+  const extra = (name: keyof typeof SHAPES, fallback: string, rot = 0) => {
+    const { parts, hot: [x, y] } = SHAPES[name];
+    const g = (w: number, c: string) => parts.map((q) => `<path d='${q.d}' fill='${q.fill ? c : 'none'}' stroke='${c}' stroke-width='${q.w + w}' stroke-linecap='round' stroke-linejoin='round'/>`).join('');
+    const body = `${shadow}<g transform='rotate(${rot} 16 16)'><g filter='url(#s)'>${g(2.8, edge)}</g>${g(0, fill)}</g>`;
+    return `${svg(body, px)} ${hs(x, y)}, ${fallback}`;
+  };
+  return {
+    arrow: `${arrow} ${hot}, default`, beam: `${svg(beam, px)} ${hs(16, 16)}, text`, hand: `${arrow} ${hot}, pointer`,
+    grab: extra('grab', 'grab'), grabbing: extra('grabbing', 'grabbing'), move: extra('move', 'move'), cross: extra('cross', 'crosshair'),
+    ew: extra('ew', 'ew-resize'), ns: extra('ew', 'ns-resize', 90), nwse: extra('ew', 'nwse-resize', 45), nesw: extra('ew', 'nesw-resize', -45), zoom: extra('zoom', 'zoom-in'),
+  };
 }
+type Part = { d: string; w: number; fill?: boolean };
+const PALM = 'M9.5 16.5h14v4.5a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6Z';
+const SHAPES: Record<'grab' | 'grabbing' | 'move' | 'cross' | 'ew' | 'zoom', { parts: Part[]; hot: [number, number] }> = {
+  grab: { hot: [16, 16], parts: [{ d: 'M11.5 17V9.5M15 16V7.5M18.5 16V8.5M22 17v-5.5M9.5 20 6.8 16.6', w: 3.2 }, { d: PALM, w: 1.4, fill: true }] },
+  grabbing: { hot: [16, 18], parts: [{ d: 'M11.5 17v-3M15 16.5v-3.5M18.5 16.5v-3.5M22 17v-3M9.5 20 7.6 18', w: 3.2 }, { d: PALM, w: 1.4, fill: true }] },
+  move: { hot: [16, 16], parts: [{ d: 'M16 5v22M5 16h22M16 5l-3.5 3.5M16 5l3.5 3.5M16 27l-3.5-3.5M16 27l3.5-3.5M5 16l3.5-3.5M5 16l3.5 3.5M27 16l-3.5-3.5M27 16l-3.5 3.5', w: 2.2 }] },
+  cross: { hot: [16, 16], parts: [{ d: 'M16 5v7.5M16 19.5V27M5 16h7.5M19.5 16H27', w: 2 }, { d: 'M16 14.8a1.2 1.2 0 1 1 0 2.4a1.2 1.2 0 1 1 0-2.4Z', w: 0.6, fill: true }] },
+  ew: { hot: [16, 16], parts: [{ d: 'M5.5 16h21M5.5 16l4.5-4.5M5.5 16l4.5 4.5M26.5 16 22 11.5M26.5 16 22 20.5', w: 2.4 }] },
+  zoom: { hot: [13, 13], parts: [{ d: 'M19 19l7 7', w: 3.4 }, { d: 'M13 5.5a7.5 7.5 0 1 1 0 15a7.5 7.5 0 1 1 0-15Z', w: 2.2 }, { d: 'M13 9.8v6.4M9.8 13h6.4', w: 2 }] },
+};
+const EXTRA_CURSORS = ['grab', 'grabbing', 'move', 'cross', 'ew', 'ns', 'nwse', 'nesw', 'zoom'] as const;
 function applyCursor(kind: CursorKind, px: number, accent: string) {
   const r = document.documentElement;
-  if (kind === 'system') { r.removeAttribute('data-cursor'); ['--cur-default', '--cur-text', '--cur-pointer'].forEach((v) => r.style.removeProperty(v)); return; }
+  if (kind === 'system') { r.removeAttribute('data-cursor'); ['--cur-default', '--cur-text', '--cur-pointer', ...EXTRA_CURSORS.map((n) => '--cur-' + n)].forEach((v) => r.style.removeProperty(v)); return; }
   const c = cursorSet(kind, Math.max(14, Math.min(48, Math.round(px))), accent);
   r.setAttribute('data-cursor', kind);
   r.style.setProperty('--cur-default', c.arrow);
   r.style.setProperty('--cur-text', c.beam);
   r.style.setProperty('--cur-pointer', c.hand);
+  for (const n of EXTRA_CURSORS) r.style.setProperty('--cur-' + n, c[n]);
 }
