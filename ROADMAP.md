@@ -2,6 +2,13 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.19.2 — worldbuilding layouts and note tags
+
+- **Worldbuilding layouts**: entries get the same Layout menu as characters (Full page, Essentials, Just the basics, Blank, or the project default), plus Add field, your own fields, and remove buttons on each field. Each type has more fields to choose from, e.g. places now have climate, rulers, trade, dangers and secrets.
+- **Note tags**: a clear "Add tag" button near the top of each note with suggestions, tag filters in the notes list, and a Tags manager to add tags ahead of time, rename a tag on every note at once, or remove it.
+- The remove (×) next to note and worldbuilding types is now always faintly visible.
+- Fixed a stray line over the "No events" text on a character's timeline.
+
 ## Changes in v0.19.1 — zoom meter
 
 - **Zoom without a scroll wheel**: the 3D map, 2D map, timeline, relationship map and family tree all have a zoom bar with −, a slider and +. The 3D map has Reset, the 2D map shows the zoom percentage, and the timeline and boards have Fit.

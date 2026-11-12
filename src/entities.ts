@@ -51,18 +51,46 @@ export const PLACE_CATEGORIES = new Set(WORLD_CATEGORIES.filter((c) => c.group =
 export function worldSections(category: string): SectionDef[] {
   const base: SectionDef[] = [{ title: 'Description', fields: [f('description', 'Description')] }];
   if (PLACE_CATEGORIES.has(category)) {
-    base.push({ title: 'Place', fields: [f('geography', 'Geography'), f('landmarks', 'Important landmarks'), f('population', 'Population', false), f('culture', 'Culture'), f('history', 'History')] });
+    base.push(
+      { title: 'Place', fields: [f('geography', 'Geography'), f('climate', 'Climate & seasons'), f('landmarks', 'Important landmarks'), f('population', 'Population', false), f('ruler', 'Ruled by', false)] },
+      { title: 'Life there', fields: [f('culture', 'Culture'), f('economy', 'Trade & economy'), f('dangers', 'Dangers')] },
+      { title: 'History', fields: [f('history', 'History'), f('secrets', 'Secrets')] },
+    );
   } else if (['Organization', 'Faction', 'Religion', 'Belief system', 'Culture', 'Political system'].includes(category)) {
-    base.push({ title: 'Details', fields: [f('beliefs', 'Beliefs / purpose'), f('structure', 'Structure & leadership'), f('history', 'History')] });
+    base.push(
+      { title: 'Details', fields: [f('beliefs', 'Beliefs / purpose'), f('structure', 'Structure & leadership'), f('members', 'Members'), f('symbols', 'Symbols & customs')] },
+      { title: 'Relations', fields: [f('allies', 'Allies'), f('enemies', 'Enemies & rivals')] },
+      { title: 'History', fields: [f('history', 'History'), f('secrets', 'Secrets')] },
+    );
   } else if (['Magic system', 'Power system', 'Technology'].includes(category)) {
-    base.push({ title: 'Rules', fields: [f('rules', 'How it works'), f('limits', 'Limits & costs'), f('history', 'Origin / history')] });
+    base.push(
+      { title: 'Rules', fields: [f('rules', 'How it works'), f('limits', 'Limits & costs'), f('users', 'Who can use it'), f('effects', 'Effects on the world')] },
+      { title: 'History', fields: [f('history', 'Origin / history'), f('secrets', 'Secrets')] },
+    );
   } else if (category === 'Language' || category === 'Terminology') {
-    base.push({ title: 'Language', fields: [f('meaning', 'Meaning / usage'), f('examples', 'Examples')] });
+    base.push({ title: 'Language', fields: [f('meaning', 'Meaning / usage'), f('examples', 'Examples'), f('speakers', 'Who speaks it'), f('sounds', 'Sounds & writing')] },
+      { title: 'History', fields: [f('history', 'History')] });
   } else {
-    base.push({ title: 'Details', fields: [f('details', 'Details'), f('history', 'History')] });
+    base.push(
+      { title: 'Details', fields: [f('details', 'Details'), f('appearance', 'Appearance'), f('abilities', 'Abilities & uses')] },
+      { title: 'History', fields: [f('history', 'History'), f('secrets', 'Secrets')] },
+    );
   }
   base.push({ title: 'Notes', fields: [f('notes', 'Notes')] });
   return base;
+}
+
+/** Ready-made sets of worldbuilding fields; which fields depends on the entry's type */
+export function worldLayouts(category: string) {
+  const all = worldSections(category).flatMap((s) => s.fields.map((x) => x.key));
+  // the description, the first section's main fields, history and notes
+  const main = worldSections(category)[1]?.fields.slice(0, 3).map((x) => x.key) ?? [];
+  return [
+    { id: 'full', name: 'Full page', desc: 'Every field for this type', keys: all },
+    { id: 'essentials', name: 'Essentials', desc: 'What most entries need', keys: ['description', ...main, 'history', 'notes'] },
+    { id: 'basics', name: 'Just the basics', desc: 'A description and some notes', keys: ['description', 'notes'] },
+    { id: 'blank', name: 'Blank', desc: 'Nothing until you add it', keys: [] as string[] },
+  ];
 }
 
 export const NOTE_TYPES = ['Idea', 'Plot', 'Plot thread', 'Research', 'Dialogue', 'Unused scene', 'Quote', 'Journal', 'Other'] as const;

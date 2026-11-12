@@ -486,6 +486,7 @@ p { margin: 6px 0; }
 .story-scene { display: inline-flex; align-items: center; gap: 6px; width: 170px; }
 .char-tl { padding-bottom: 30px; }
 .life { padding: 6px 18px 0 18px; display: flex; flex-direction: column; position: relative; }
+.life.no-events::before { display: none; }
 .life::before { content: ''; position: absolute; left: 77px; top: 10px; bottom: 10px; width: 2px; background: var(--border); }
 .life-item { display: flex; gap: 14px; align-items: flex-start; padding: 8px 10px 8px 0; text-align: left; border-radius: 8px; position: relative; }
 .life-item:hover { background: var(--hover); }
@@ -1279,7 +1280,7 @@ body.fx-shake .app { animation: fx-shake .75s cubic-bezier(.36, .07, .19, .97); 
 .type-row:hover { background: var(--hover); }
 .type-row .picker-item:hover { background: none; }
 .type-row.on .picker-item { color: var(--accent); font-weight: 600; }
-.type-x { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); opacity: 0; flex: none; margin-right: 4px; }
+.type-x { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); opacity: .35; flex: none; margin-right: 4px; }
 .type-row:hover .type-x, .type-x:focus-visible { opacity: 1; }
 .type-x:hover { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
 @media (pointer: coarse) { .type-x { opacity: .7; } }
@@ -1433,3 +1434,20 @@ body.fx-shake .app { animation: fx-shake .75s cubic-bezier(.36, .07, .19, .97); 
 @media (max-width: 700px) { .zoom-meter input[type=range] { width: 80px; } }
 .terrain3d-wrap { position: absolute; inset: 0; }
 .zoom-meter.flow-zoom { background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--border); padding: 3px 6px; box-shadow: var(--shadow); }
+/* tags */
+.tag-add-wrap { position: relative; display: inline-flex; }
+.tag-add { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px dashed var(--border); color: var(--muted); }
+.tag-add:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); }
+.tag-input { width: 120px; padding: 1px 8px; border-radius: 99px; border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.tag-pop { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 170px; max-height: 240px; overflow: auto; display: flex; flex-direction: column; padding: 4px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+.tag-pop button { text-align: left; font-size: 13px; padding: 5px 8px; border-radius: 6px; display: flex; align-items: center; gap: 4px; }
+.tag-pop button:hover { background: var(--hover); }
+.tag-manage { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); }
+.tag-manage:hover { background: var(--hover); color: var(--text); }
+.note-tags { margin: 2px 0 4px; }
+.manage-tags { min-width: min(420px, 80vw); padding: 4px 16px 14px; }
+.tag-rows { display: flex; flex-direction: column; gap: 2px; max-height: 50vh; overflow: auto; }
+.tag-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 8px; }
+.tag-row:hover { background: var(--hover); }
+.tag-name { flex: 1; min-width: 0; background: none; border: 0; outline: none; font-size: 14px; color: var(--text); padding: 3px 4px; border-radius: 5px; }
+.tag-name:focus { background: var(--bg); box-shadow: 0 0 0 1px var(--border); }

@@ -31,9 +31,13 @@ export interface Project {
   /** the project's own lists of worldbuilding and note types (empty = the defaults) */
   worldTypes?: { name: string; group: string }[];
   noteTypes?: string[];
+  /** tags you set up for notes before using them */
+  noteTags?: string[];
   author?: string;
   /** which character fields new / un-customised characters show (layout id or a list of field keys) */
   charLayout?: string | string[];
+  /** the same for worldbuilding entries */
+  worldLayout?: string | string[];
   createdAt: number;
   updatedAt: number;
   openedAt: number;

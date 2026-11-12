@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Star, MoreHorizontal, Copy, Trash2, Plus, Download } from 'lucide-react';
 import { db, type Entity } from '../../db';
-import { WORLD_CATEGORIES, PLACE_CATEGORIES, CUSTOM_GROUP, worldTypesOf, setWorldTypes, createEntity, deleteEntity, duplicateEntity, updateEntity, worldSections, parentOf, setParent, ancestors, isInside, childCategory } from '../../entities';
+import { WORLD_CATEGORIES, PLACE_CATEGORIES, CUSTOM_GROUP, worldTypesOf, setWorldTypes, createEntity, deleteEntity, duplicateEntity, updateEntity, worldSections, worldLayouts, parentOf, setParent, ancestors, isInside, childCategory } from '../../entities';
 import { toastTrashed } from '../TrashView';
 import { ChevronRight, X } from 'lucide-react';
 import { Picker } from './common';
@@ -14,6 +14,7 @@ import { NotesAbout, RelatedEntities, SceneLinks } from './links';
 import { exportEntityMarkdown } from '../../exporting';
 import { TimelineBox } from '../visual/TimelineBox';
 import { TypePicker } from './TypePicker';
+import { ProfileFields } from './ProfileFields';
 
 export function WorldView({ projectId, entityId, category }: { projectId: string; entityId?: string; category?: string }) {
   const items = useLiveQuery(() => db.entities.where('[projectId+kind]').equals([projectId, 'world']).toArray(), [projectId]);
@@ -56,7 +57,6 @@ function WorldEntry({ e, opts, types, all }: { e: Entity; opts: NonNullable<Retu
   const open = (id: string) => go({ view: 'world', projectId: e.projectId, entityId: id });
   const nest = async (id: string, parent: string | undefined) => { try { await setParent(id, parent); } catch (err) { toast((err as Error).message); } };
   const cat = String(e.fields.category ?? 'Location');
-  const F = (k: string) => String(e.fields[k] ?? '');
   const set = (k: string, v: unknown) => updateEntity(e.id, { fields: { [k]: v } });
   const isPlace = PLACE_CATEGORIES.has(cat);
   const menu = (ev: React.MouseEvent) => openMenu(ev, [
@@ -96,14 +96,7 @@ function WorldEntry({ e, opts, types, all }: { e: Entity; opts: NonNullable<Retu
             <TagEditor tags={e.tags} suggestions={opts.allTags} onChange={(tags) => updateEntity(e.id, { tags })} />
           </div>
         </div>
-        {worldSections(cat).map((sec) => (
-          <section key={sec.title} className="psection">
-            <h3>{sec.title}</h3>
-            <div className={sec.fields.every((f) => !f.long) ? 'fgrid' : 'fcol'}>
-              {sec.fields.map((f) => <Field key={f.key} label={sec.fields.length > 1 ? f.label : undefined} value={F(f.key)} long={f.long} onCommit={(v) => set(f.key, v)} />)}
-            </div>
-          </section>
-        ))}
+        <ProfileFields e={e} sections={worldSections(cat)} layouts={worldLayouts(cat)} projectKey="worldLayout" noun="entry" nouns="entries" />
       </div>
       <aside className="profile-side">
         <SideBox title="Part of">

@@ -751,7 +751,7 @@ function CharacterTimeline({ projectId, characterId, data, opts, setSel }: { pro
         <button className="btn ghost sm" onClick={() => openEntity(ch)}><ExternalLink size={13} /> Profile</button>
         <button className="btn primary sm" onClick={addLife}><Plus size={13} /> Life event</button>
       </div>
-      <div className="life">
+      <div className={'life' + (evs.length || Number.isFinite(birth) ? '' : ' no-events')}>
         {Number.isFinite(birth) && <div className="life-item born"><span className="life-age">0</span><span className="life-dot" /><div><strong>{ch.name} is born</strong><div className="muted small">{birth}</div></div></div>}
         {evs.map(({ e, v }) => {
           const age = Number.isFinite(birth) && Number.isFinite(v) ? Math.floor(v - birth) : null;

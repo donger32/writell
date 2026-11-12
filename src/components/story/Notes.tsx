@@ -1,13 +1,13 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { TypePicker } from './TypePicker';
 import { useState } from 'react';
-import { Paperclip, Download, Upload, Folder, Pin, Trash2, Plus, X, Inbox, ImagePlus, FileText, BookOpen, Check } from 'lucide-react';
-import { db, uid, type Entity } from '../../db';
+import { Paperclip, Download, Upload, Folder, Pin, Trash2, Plus, X, Inbox, ImagePlus, FileText, BookOpen, Check, Hash, Tags } from 'lucide-react';
+import { db, uid, now, type Entity } from '../../db';
 import { saveBinary } from '../../util';
 import { NOTE_TYPES, noteTypesOf, setNoteTypes, addLink, createEntity, deleteEntity, pickImage, removeLink, updateEntity } from '../../entities';
 import { toastTrashed } from '../TrashView';
 import { go } from '../../nav';
-import { confirmDialog, toast } from '../ui';
+import { Modal, confirmDialog, toast } from '../ui';
 import { Avatar, Field, Picker, TagEditor, useProjectOptions } from './common';
 import { EntityShell } from './EntityShell';
 import { openEntity } from './links';
@@ -40,19 +40,23 @@ export function NotesView({ projectId, entityId, filter: initial }: { projectId:
   const opts = useProjectOptions(projectId);
   const project = useLiveQuery(() => db.projects.get(projectId), [projectId]);
   const [filter, setFilter] = useState(initial ?? 'All');
+  const [managing, setManaging] = useState(false);
   if (!items || !opts) return null;
+  const usedTags = [...new Set(items.flatMap((n) => n.tags))].sort((a, b) => a.localeCompare(b));
+  const tagList = [...new Set([...(project?.noteTags ?? []), ...usedTags])].sort((a, b) => a.localeCompare(b));
   const types = noteTypesOf(project);
   const usedTypes = [...new Set(items.map((n) => String(n.fields.type ?? '')).filter(Boolean))];
   const folders = [...new Set(items.map((n) => String(n.fields.folder ?? '')).filter(Boolean))].sort();
   const inboxCount = items.filter((n) => n.fields.inbox).length;
   const shown = items.filter((n) =>
     filter === 'All' ? true : filter === 'Inbox' ? n.fields.inbox : filter === 'Pinned' ? n.fields.pinned : filter === 'Open threads' ? n.fields.type === 'Plot thread' && !n.fields.resolved
-      : filter.startsWith('folder:') ? n.fields.folder === filter.slice(7) : n.fields.type === filter,
+      : filter.startsWith('folder:') ? n.fields.folder === filter.slice(7) : filter.startsWith('tag:') ? n.tags.includes(filter.slice(4)) : n.fields.type === filter,
   ).map((n) => ({ ...n, favorite: !!n.fields.pinned })); // pinned notes float to the top
   const create = async () => {
     const type = usedTypes.includes(filter) || types.includes(filter) ? filter : types.includes('Idea') ? 'Idea' : types[0] ?? '';
     const folder = filter.startsWith('folder:') ? filter.slice(7) : '';
     const id = await createEntity(projectId, 'note', '', { type, folder, body: '', inbox: filter === 'Inbox' });
+    if (filter.startsWith('tag:')) await updateEntity(id, { tags: [filter.slice(4)] });
     go({ view: 'notes', projectId, entityId: id });
   };
   const active = items.find((n) => n.id === entityId);
@@ -65,16 +69,20 @@ export function NotesView({ projectId, entityId, filter: initial }: { projectId:
           {['All', 'Inbox', 'Pinned', ...(items.some((n) => n.fields.type === 'Plot thread') ? ['Open threads'] : [])].map((c) => <button key={c} className={'chip' + (filter === c ? ' on' : '')} onClick={() => setFilter(c)}>{c === 'Inbox' ? `Inbox${inboxCount ? ` (${inboxCount})` : ''}` : c}</button>)}
           {[...types.filter((t) => usedTypes.includes(t)), ...usedTypes.filter((t) => !types.includes(t))].map((c) => <button key={c} className={'chip' + (filter === c ? ' on' : '')} onClick={() => setFilter(c)}>{c}</button>)}
           {folders.map((f) => <button key={f} className={'chip' + (filter === 'folder:' + f ? ' on' : '')} onClick={() => setFilter('folder:' + f)}><Folder size={11} /> {f}</button>)}
+          {usedTags.map((t) => <button key={'t' + t} className={'chip' + (filter === 'tag:' + t ? ' on' : '')} onClick={() => setFilter(filter === 'tag:' + t ? 'All' : 'tag:' + t)}><Hash size={11} />{t}</button>)}
+          <button className="chip" title="Add, rename or remove tags" onClick={() => setManaging(true)}><Tags size={11} /> Tags…</button>
           <button className="chip" title="Turn text or Markdown files into notes (they land in the Inbox)" onClick={() => importNoteFiles(projectId)}><Upload size={11} /> Import…</button>
         </div>
       }
       empty={<><h3>Notes & ideas</h3><p className="muted">Press <kbd>Ctrl + Shift + N</kbd> anywhere to jot an idea into the inbox without deciding where it belongs.</p><button className="btn primary" onClick={create}><Plus size={14} /> New note</button></>}>
-      {active && <NoteEditor key={active.id} n={active} opts={opts} folders={folders} types={types} all={items} />}
+      {active && <NoteEditor key={active.id} n={active} opts={opts} folders={folders} types={types} all={items} tagList={tagList} onManage={() => setManaging(true)} />}
+      {managing && <ManageTags projectId={projectId} notes={items} tags={tagList} saved={project?.noteTags ?? []} onClose={() => setManaging(false)}
+        onRenamed={(a, b) => { if (filter === 'tag:' + a) setFilter(b ? 'tag:' + b : 'All'); }} />}
     </EntityShell>
   );
 }
 
-function NoteEditor({ n, opts, folders, types, all }: { n: Entity; opts: NonNullable<ReturnType<typeof useProjectOptions>>; folders: string[]; types: string[]; all: Entity[] }) {
+function NoteEditor({ n, opts, folders, types, all, tagList, onManage }: { n: Entity; opts: NonNullable<ReturnType<typeof useProjectOptions>>; folders: string[]; types: string[]; all: Entity[]; tagList: string[]; onManage: () => void }) {
   const set = (k: string, v: unknown) => updateEntity(n.id, { fields: { [k]: v } });
   const images = (n.fields.images as string[] | undefined) ?? [];
   const links = useLiveQuery(() => db.links.where('[fromType+fromId]').equals(['entity', n.id]).filter((l) => l.relation === 'about').toArray(), [n.id]);
@@ -102,9 +110,9 @@ function NoteEditor({ n, opts, folders, types, all }: { n: Entity; opts: NonNull
         <button className={'icon-btn' + (n.fields.pinned ? ' on' : '')} title="Pin note" onClick={() => set('pinned', !n.fields.pinned)}><Pin size={15} /></button>
         <button className="icon-btn" title="Delete note" onClick={async () => { go({ view: 'notes', projectId: n.projectId }); toastTrashed(n.name || 'Note', await deleteEntity(n.id)); }}><Trash2 size={15} /></button>
       </div>
+      <div className="note-tags"><TagEditor tags={n.tags} suggestions={[...new Set([...tagList, ...opts.allTags])]} onChange={(tags) => updateEntity(n.id, { tags })} onManage={onManage} /></div>
       <Field wrap className="name-field" value={n.name} placeholder="Title" onCommit={(v) => updateEntity(n.id, { name: v })} />
       <Field className="note-body" value={String(n.fields.body ?? '')} long placeholder="Write anything…" onCommit={(v) => set('body', v)} />
-      <TagEditor tags={n.tags} suggestions={opts.allTags} onChange={(tags) => updateEntity(n.id, { tags })} />
       </div>
 
       <div className="note-side">
@@ -208,5 +216,49 @@ export function Attachments({ ownerId, projectId }: { ownerId: string; projectId
         </div>
       ))}
     </div>
+  );
+}
+
+/** Add tags ahead of time, rename a tag on every note, or take it off every note */
+function ManageTags({ projectId, notes, tags, saved, onClose, onRenamed }: { projectId: string; notes: Entity[]; tags: string[]; saved: string[]; onClose: () => void; onRenamed: (from: string, to: string | null) => void }) {
+  const [v, setV] = useState('');
+  const count = (t: string) => notes.filter((n) => n.tags.includes(t)).length;
+  const saveList = (list: string[]) => db.projects.update(projectId, { noteTags: [...new Set(list)], updatedAt: now() });
+  const add = async () => { const t = v.trim().replace(/^#/, ''); if (!t) return; if (!tags.includes(t)) await saveList([...saved, t]); setV(''); };
+  const rename = async (from: string, raw: string) => {
+    const to = raw.trim().replace(/^#/, '');
+    if (!to || to === from) return;
+    for (const n of notes) if (n.tags.includes(from)) await updateEntity(n.id, { tags: [...new Set(n.tags.map((x) => x === from ? to : x))] });
+    await saveList(saved.map((x) => x === from ? to : x));
+    onRenamed(from, to); toast(`#${from} is now #${to}`);
+  };
+  const remove = async (t: string) => {
+    const c = count(t);
+    if (c && !(await confirmDialog(`Remove #${t}?`, `It comes off ${c} ${c === 1 ? 'note' : 'notes'}. The notes themselves are kept.`, { danger: true, ok: 'Remove' }))) return;
+    for (const n of notes) if (n.tags.includes(t)) await updateEntity(n.id, { tags: n.tags.filter((x) => x !== t) });
+    await saveList(saved.filter((x) => x !== t));
+    onRenamed(t, null);
+  };
+  return (
+    <Modal title="Note tags" onClose={onClose}>
+      <div className="col gap-s manage-tags">
+        <div className="row gap-s">
+          <input className="input grow" autoFocus value={v} placeholder="New tag, e.g. act-two" onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void add(); }} />
+          <button className="btn primary sm" onClick={() => void add()} disabled={!v.trim()}><Plus size={13} /> Add</button>
+        </div>
+        {!tags.length && <p className="muted small">No tags yet. Add some here, or type one on any note.</p>}
+        <div className="tag-rows">
+          {tags.map((t) => (
+            <div key={t} className="tag-row">
+              <Hash size={13} className="muted" />
+              <input className="tag-name" defaultValue={t} aria-label={`Rename ${t}`} onBlur={(e) => void rename(t, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+              <span className="muted small">{count(t)} {count(t) === 1 ? 'note' : 'notes'}</span>
+              <button className="icon-btn sm" title={`Remove #${t}`} aria-label={`Remove ${t}`} onClick={() => void remove(t)}><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </div>
+        <p className="muted small">Click a name to rename it on every note.</p>
+      </div>
+    </Modal>
   );
 }

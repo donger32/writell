@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { X, Plus, ImagePlus, Search } from 'lucide-react';
+import { X, Plus, ImagePlus, Search, Settings2 } from 'lucide-react';
 import { db, type Entity } from '../../db';
 import { registerFlush } from '../../saveRegistry';
 import { NAME_COLORS, autoColor, initials, pickImage, PLACE_CATEGORIES } from '../../entities';
@@ -44,17 +44,31 @@ export function Field({ label, value, onCommit, long, wrap, placeholder, classNa
   );
 }
 
-export function TagEditor({ tags, onChange, suggestions = [] }: { tags: string[]; onChange: (t: string[]) => void; suggestions?: string[] }) {
+export function TagEditor({ tags, onChange, suggestions = [], onManage }: { tags: string[]; onChange: (t: string[]) => void; suggestions?: string[]; onManage?: () => void }) {
   const [v, setV] = useState('');
+  const [open, setOpen] = useState(false);
   const add = (t: string) => { const x = t.trim().replace(/^#/, ''); if (x && !tags.includes(x)) onChange([...tags, x]); setV(''); };
-  const listId = useMemo(() => 'tags-' + Math.random().toString(36).slice(2), []);
+  const term = v.trim().replace(/^#/, '').toLowerCase();
+  const offer = [...new Set(suggestions)].filter((s) => !tags.includes(s) && (!term || s.toLowerCase().includes(term))).slice(0, 8);
   return (
     <div className="tags">
-      {tags.map((t) => <span key={t} className="tag">#{t}<button aria-label={`Remove ${t}`} onClick={() => onChange(tags.filter((x) => x !== t))}><X size={11} /></button></span>)}
-      <input className="tag-input" list={listId} value={v} placeholder="+ tag" onChange={(e) => setV(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(v); } if (e.key === 'Backspace' && !v && tags.length) onChange(tags.slice(0, -1)); }}
-        onBlur={() => v && add(v)} />
-      <datalist id={listId}>{suggestions.filter((s) => !tags.includes(s)).map((s) => <option key={s} value={s} />)}</datalist>
+      {tags.map((t) => <span key={t} className="tag">#{t}<button aria-label={`Remove ${t}`} title={`Remove #${t}`} onClick={() => onChange(tags.filter((x) => x !== t))}><X size={11} /></button></span>)}
+      <span className="tag-add-wrap">
+        {open ? (
+          <input className="tag-input" autoFocus value={v} placeholder="Tag name…" aria-label="Add a tag" onChange={(e) => setV(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); if (v.trim()) add(v); else setOpen(false); } if (e.key === 'Escape') { setV(''); setOpen(false); } if (e.key === 'Backspace' && !v && tags.length) onChange(tags.slice(0, -1)); }}
+            onBlur={() => { setTimeout(() => { setV((cur) => { if (cur.trim()) add(cur); return ''; }); setOpen(false); }, 150); }} />
+        ) : (
+          <button type="button" className="tag-add" onClick={() => setOpen(true)}><Plus size={11} /> Add tag</button>
+        )}
+        {open && (offer.length > 0 || term) && (
+          <div className="tag-pop" onMouseDown={(e) => e.preventDefault()}>
+            {offer.map((s) => <button key={s} type="button" onClick={() => add(s)}>#{s}</button>)}
+            {term && !suggestions.some((s) => s.toLowerCase() === term) && !tags.some((s) => s.toLowerCase() === term) && <button type="button" className="accent" onClick={() => add(v)}><Plus size={11} /> New tag “{v.trim().replace(/^#/, '')}”</button>}
+          </div>
+        )}
+      </span>
+      {onManage && <button type="button" className="tag-manage" title="Add, rename or remove tags" onClick={onManage}><Settings2 size={12} /></button>}
     </div>
   );
 }
