@@ -14,7 +14,8 @@ export interface SectionDef { title: string; fields: FieldDef[] }
 const f = (key: string, label: string, long = true, placeholder?: string): FieldDef => ({ key, label, long, placeholder });
 
 export const CHARACTER_STATUS = ['Alive', 'Dead', 'Missing', 'Unknown'] as const;
-export const CHARACTER_ROLES = ['Protagonist', 'Antagonist', 'Main', 'Supporting', 'Minor', 'Mentioned'] as const;
+/** the starting role list; each project can add, rename, reorder or remove roles (project.charRoles) */
+export const CHARACTER_ROLES = ['Protagonist', 'Antagonist', 'Main', 'Supporting', 'Mentioned'];
 
 export const CHARACTER_SECTIONS: SectionDef[] = [
   { title: 'Basics', fields: [f('nicknames', 'Nicknames / aliases', false), f('age', 'Age', false), f('birthday', 'Birthday', false, 'e.g. 23/12/1324 — its year puts them on timelines'), f('deathYear', 'Death year', false), f('gender', 'Gender', false), f('occupation', 'Occupation', false)] },

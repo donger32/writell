@@ -33,6 +33,8 @@ export interface Project {
   noteTypes?: string[];
   /** tags you set up for notes before using them */
   noteTags?: string[];
+  /** the project's own list of character roles (unset = the defaults) */
+  charRoles?: string[];
   author?: string;
   /** which character fields new / un-customised characters show (layout id or a list of field keys) */
   charLayout?: string | string[];
