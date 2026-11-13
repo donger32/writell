@@ -309,6 +309,14 @@ function WorldTimeline({ projectId, timeline, data, opts, sel, setSel }: { proje
       if (v >= t0 && v <= t1 && i % mStep === 0) ticks.push({ x: X(v), label: i === 0 || monthPx >= 120 ? `${m.name.slice(0, 3)} ${yearLabel(y, { ...cal, era: '' })}` : m.name.slice(0, 3), major: i === 0 });
       if (dayStep && mStep === 1) for (let d = 1 + dayStep; d <= m.days; d += dayStep) { const dv = dateValue({ y, m: i + 1, d }, cal); if (dv >= t0 && dv <= t1) ticks.push({ x: X(dv), label: `${d}`, major: false }); }
     });
+    // day numbers give way to month labels ("Jan 2020") so the two never overlap
+    const labelW = (s: string) => s.length * 6.4 + 10;
+    const months = ticks.filter((t) => !/^\d+$/.test(t.label));
+    for (let k = ticks.length - 1; k >= 0; k--) {
+      const t = ticks[k];
+      if (!/^\d+$/.test(t.label)) continue;
+      if (months.some((m) => t.x < m.x + labelW(m.label) && t.x + labelW(t.label) > m.x)) ticks.splice(k, 1);
+    }
   }
 
   const addEvent = async (at?: FDate) => {
