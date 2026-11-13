@@ -2,6 +2,18 @@
 
 Legend: ✅ done and tested · 🟡 partly done · ⬜ not started
 
+## Changes in v0.20.0 — smoother writing, faster long scenes, your own roles
+
+- **Very long scenes are fast**: typing in a scene with hundreds of thousands of words no longer lags, and the few-second freezes while it saved backups are gone.
+- **Pasted text doesn't count** toward your daily words and stats (only what you type does). Milestones already worked this way.
+- **Book-style paragraphs** (Settings → Editor → Paragraphs): first-line indents and no gaps, like a printed novel. Paragraphs after headings, quotes, lists and scene breaks start flush.
+- Clicking below your text puts the cursor at the end; the formatting toolbar is centred; a lone "-" no longer counts as a word.
+- **Character roles**: "Minor" is gone from the defaults, and "Edit roles…" in the Role menu lets you add, rename, reorder and remove roles for each project.
+- **Glossary**: terms starting with a number get their own "0–9" group, sorted by value (1, 2, 10, 100); symbols stay under #.
+- **Maps**: dragging buildings and items on the 3D map shows them moving smoothly instead of jumping; the 2D eraser no longer leaves marks when zoomed in far.
+- **Timeline**: day numbers no longer overlap the month names at some zoom levels.
+- Notes shows its welcome panel when no note is open; new users get a writing page that matches their theme.
+
 ## Changes in v0.19.3 — custom pointer everywhere
 
 - Your chosen mouse pointer no longer switches back to the system one over drag handles, map tools, timeline cards, the relationship map, the family tree, resize edges or image previews. Each pointer style now has its own drag hand, crosshair, move, resize and zoom shapes.
