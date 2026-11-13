@@ -167,7 +167,6 @@ export function Map2D(p: Map2DProps) {
         <div className={'map2d-board' + (p.look && !p.look.labels ? ' hide-names' : '')} ref={board} style={{ aspectRatio: String(p.aspect), ['--a' as string]: String(p.aspect) }}>
           <canvas ref={canvas} width={RES} height={H} />
           <Things2D objects={p.objects} selected={p.selectedObject} pending={p.pendingLine} N={p.N} aspect={p.aspect} journeys={p.journeys} k={view.k} />
-          {cursor && <div className="map2d-brush" style={{ left: `${cursor.x * 100}%`, top: `${cursor.y * 100}%`, width: `${(p.brush * 2 / (p.N - 1)) * 100}%`, aspectRatio: String(1 / p.aspect) }} />}
           {p.objects.filter((o) => o.kind === 'character').map((o) => (
             <span key={o.id} className={'map-char flat' + (o.id === p.selectedObject ? ' on' : '')} style={{ left: `${o.u * 100}%`, top: `${o.v * 100}%`, ['--cc' as string]: o.color ?? '#8b7cf6', transform: `translate(-50%, -50%) scale(${1 / view.k})` }}
               onDoubleClick={() => o.entityId && p.onOpenCharacter?.(o.entityId)}>
@@ -181,6 +180,11 @@ export function Map2D(p: Map2DProps) {
           ))}
         </div>
       </div>
+      {/* the brush ring is drawn in screen space, not inside the zoomed board: scaled up 20x its edge left smears behind when it moved */}
+      {cursor && board.current && (() => {
+        const b = board.current, w = (p.brush * 2 / (p.N - 1)) * b.offsetWidth * view.k;
+        return <div className="map2d-brush" style={{ left: view.x + view.k * (b.offsetLeft + cursor.x * b.offsetWidth), top: view.y + view.k * (b.offsetTop + cursor.y * b.offsetHeight), width: w, height: w * p.aspect }} />;
+      })()}
       <div className="row gap-s map2d-reset" onPointerDown={(e) => e.stopPropagation()}>
         {p.N > 160 && <button className="btn sm" onClick={() => setView(startView())}>Reset view</button>}
         <button className="btn sm" onClick={() => setView({ x: 0, y: 0, k: 1 })}>{p.N > 160 ? 'Whole map' : 'Reset view'}</button>
